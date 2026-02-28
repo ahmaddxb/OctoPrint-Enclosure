@@ -55,8 +55,10 @@ The following methods are public:
 """
 
 import time
-import RPi.GPIO as GPIO
-
+try:
+    import RPi.GPIO as GPIO
+except Exception:
+    pass
 
 class LEDStrip:
     def __init__(self, clock, data):
