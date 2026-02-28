@@ -8,7 +8,39 @@ import octoprint.plugin
 try:
     import RPi.GPIO as GPIO
 except Exception:
-    pass
+    class MockGPIO:
+        LOW = 0
+        HIGH = 1
+        IN = 1
+        OUT = 0
+        PUD_OFF = 20
+        PUD_DOWN = 21
+        PUD_UP = 22
+        BOARD = 10
+        BCM = 11
+
+        @classmethod
+        def setmode(cls, mode): pass
+        @classmethod
+        def setup(cls, channel, direction, pull_up_down=None, initial=None): pass
+        @classmethod
+        def output(cls, channel, state): pass
+        @classmethod
+        def input(cls, channel): return 0
+        @classmethod
+        def cleanup(cls, channel=None): pass
+        @classmethod
+        def setwarnings(cls, state): pass
+        @classmethod
+        def getmode(cls): return 11
+
+        class PWM:
+            def __init__(self, channel, frequency): pass
+            def start(self, dc): pass
+            def ChangeDutyCycle(self, dc): pass
+            def stop(self): pass
+
+    GPIO = MockGPIO()
 from flask import jsonify, request, make_response, Response
 from octoprint.server.util.flask import restricted_access
 from werkzeug.exceptions import BadRequest
