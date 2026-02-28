@@ -24,12 +24,114 @@ import copy
 from smbus2 import SMBus
 from .getPiTemp import PiTemp
 import struct
+import threading
+import os
+
+active_gpiod_monitors = {}
+
+class GpiodMonitor:
+    def __init__(self, pin, edge_str, pull_resistor_str, callback, logger):
+        self.pin = pin
+        self.edge_str = edge_str
+        self.pull_resistor_str = pull_resistor_str
+        self.callback = callback
+        self.logger = logger
+        self.stop_event = threading.Event()
+        self.thread = None
+        self.request = None
+
+    def _get_chip_path(self):
+        for path in ['/dev/gpiochip4', '/dev/gpiochip0']:
+            if os.path.exists(path):
+                return path
+        return '/dev/gpiochip0'
+
+    def start(self):
+        self.thread = threading.Thread(target=self._monitor_loop)
+        self.thread.daemon = True
+        self.thread.start()
+
+    def stop(self):
+        self.stop_event.set()
+        if self.thread:
+            self.thread.join(timeout=2.0)
+
+    def get_value(self):
+        if self.request:
+            import gpiod
+            try:
+                val = self.request.get_value(self.pin)
+                return 1 if val == gpiod.line.Value.ACTIVE else 0
+            except:
+                pass
+        return 0
+
+    def _monitor_loop(self):
+        import gpiod
+        from gpiod.line import Direction, Bias, Edge, Value
+        from datetime import timedelta
+        
+        if self.edge_str == 'rise':
+            edge_type = Edge.RISING
+        elif self.edge_str == 'fall':
+            edge_type = Edge.FALLING
+        else:
+            edge_type = Edge.BOTH
+
+        if self.pull_resistor_str == 'input_pull_up':
+            bias = Bias.PULL_UP
+        elif self.pull_resistor_str == 'input_pull_down':
+            bias = Bias.PULL_DOWN
+        else:
+            bias = Bias.DISABLED
+
+        chip_path = self._get_chip_path()
+        try:
+            line_settings = gpiod.LineSettings(
+                direction=Direction.INPUT,
+                bias=bias,
+                edge_detection=edge_type,
+                debounce_period=timedelta(milliseconds=200)
+            )
+            with gpiod.request_lines(
+                chip_path,
+                consumer="octoprint-enclosure-plugin",
+                config={self.pin: line_settings}
+            ) as request:
+                self.request = request
+                while not self.stop_event.is_set():
+                    if request.wait_edge_events(timedelta(milliseconds=500)):
+                        for event in request.read_edge_events():
+                            self.callback(self.pin)
+        except Exception as e:
+            self.logger.error("Failed to start gpiod monitor on pin %s: %s", self.pin, e)
+
+def get_gpio_input(pin):
+    if pin in active_gpiod_monitors:
+        return active_gpiod_monitors[pin].get_value()
+    try:
+        import gpiod
+        chip_path = '/dev/gpiochip4' if os.path.exists('/dev/gpiochip4') else '/dev/gpiochip0'
+        with gpiod.request_lines(
+            chip_path,
+            consumer="octoprint-enclosure-read",
+            config={pin: gpiod.LineSettings(direction=gpiod.line.Direction.INPUT)}
+        ) as request:
+            val = request.get_value(pin)
+            return 1 if val == gpiod.line.Value.ACTIVE else 0
+    except:
+        pass
+    try:
+        import RPi.GPIO as GPIO
+        return GPIO.input(pin)
+    except:
+        return 0
 
 
 #Function that returns Boolean output state of the GPIO inputs / outputs
 def PinState_Boolean(pin, ActiveLow) :
     try:
-        state = GPIO.input(pin)
+        state = get_gpio_input(pin)
         if ActiveLow and not state: return True
         if not ActiveLow and state: return True
         return False
@@ -253,7 +355,7 @@ class EnclosurePlugin(octoprint.plugin.StartupPlugin, octoprint.plugin.TemplateP
             ConfiguredAs = "Unknown"
             ActiveLow = "Unknown"
             try:
-                val = GPIO.input(pin)
+                val = get_gpio_input(pin)
             except:
                 val = "GPIO pin not initialized."
             Resp.append(dict(Configured_As=ConfiguredAs, GPIO_Pin=pin, Active_Low=ActiveLow, State=val))
@@ -882,7 +984,7 @@ class EnclosurePlugin(octoprint.plugin.StartupPlugin, octoprint.plugin.TemplateP
                     if first_run:
                         current_value = False
                     else:
-                        current_value = (not GPIO.input(gpio_pin)) if output['active_low'] else GPIO.input(gpio_pin)
+                        current_value = (not get_gpio_input(gpio_pin)) if output['active_low'] else get_gpio_input(gpio_pin)
 
                 if current_value:
                     time_delay = self.to_int(output['toggle_timer_off'])
@@ -978,14 +1080,14 @@ class EnclosurePlugin(octoprint.plugin.StartupPlugin, octoprint.plugin.TemplateP
                     if output['gpio_i2c_enabled']:
                         val = self.gpio_i2c_input(output)
                     else:
-                        val = GPIO.input(pin) if not output['active_low'] else (not GPIO.input(pin))
+                        val = get_gpio_input(pin) if not output['active_low'] else (not get_gpio_input(pin))
                     regular_status.append(
                         dict(index_id=index, status=val, auto_startup=startup, auto_shutdown=shutdown))
                 if output['output_type'] == 'temp_hum_control':
                     if output['gpio_i2c_enabled']:
                         val = self.gpio_i2c_input(output)
                     else:
-                        val = GPIO.input(pin) if not output['active_low'] else (not GPIO.input(pin))
+                        val = get_gpio_input(pin) if not output['active_low'] else (not get_gpio_input(pin))
                     temp_control_status.append(
                         dict(index_id=index, status=val, auto_startup=startup, auto_shutdown=shutdown))
                 if output['output_type'] == 'neopixel_indirect' or output['output_type'] == 'neopixel_direct':
@@ -1641,11 +1743,10 @@ class EnclosurePlugin(octoprint.plugin.StartupPlugin, octoprint.plugin.TemplateP
                     GPIO.cleanup(gpio_pin)
 
             for gpio_in in list(filter(lambda item: item['input_type'] == 'gpio', self.rpi_inputs)):
-                try:
-                    GPIO.remove_event_detect(self.to_int(gpio_in['gpio_pin']))
-                except:
-                    pass
-                GPIO.cleanup(self.to_int(gpio_in['gpio_pin']))
+                pingpio = self.to_int(gpio_in['gpio_pin'])
+                if pingpio in active_gpiod_monitors:
+                    active_gpiod_monitors[pingpio].stop()
+                    active_gpiod_monitors.pop(pingpio, None)
         except Exception as ex:
             self.log_error(ex)
 
@@ -1707,25 +1808,31 @@ class EnclosurePlugin(octoprint.plugin.StartupPlugin, octoprint.plugin.TemplateP
 
             for rpi_input in list(filter(lambda item: item['input_type'] == 'gpio', self.rpi_inputs)):
                 gpio_pin = self.to_int(rpi_input['gpio_pin'])
-                pull_resistor = GPIO.PUD_UP if rpi_input['input_pull_resistor'] == 'input_pull_up' else GPIO.PUD_DOWN
-                GPIO.setup(gpio_pin, GPIO.IN, pull_resistor)
-                edge = GPIO.RISING if rpi_input['edge'] == 'rise' else GPIO.FALLING
+                pull_resistor_str = rpi_input['input_pull_resistor']
+                edge_str = rpi_input['edge']
 
                 inputs_same_gpio = list(
                     [r_inp for r_inp in self.rpi_inputs if self.to_int(r_inp['gpio_pin']) == gpio_pin])
 
                 if len(inputs_same_gpio) > 1:
-                    GPIO.remove_event_detect(gpio_pin)
                     for other_input in inputs_same_gpio:
-                        if other_input['edge'] is not edge:
-                            edge = GPIO.BOTH
+                        if other_input['edge'] != edge_str:
+                            edge_str = 'both'
+
+                if gpio_pin in active_gpiod_monitors:
+                    active_gpiod_monitors[gpio_pin].stop()
+                    active_gpiod_monitors.pop(gpio_pin, None)
 
                 if rpi_input['action_type'] == 'output_control':
-                    self._logger.info("Adding GPIO event detect on pin %s with edge: %s", gpio_pin, edge)
-                    GPIO.add_event_detect(gpio_pin, edge, callback=self.handle_gpio_control, bouncetime=200)
+                    self._logger.info("Adding GPIO event detect on pin %s with edge: %s", gpio_pin, edge_str)
+                    monitor = GpiodMonitor(gpio_pin, edge_str, pull_resistor_str, self.handle_gpio_control, self._logger)
+                    monitor.start()
+                    active_gpiod_monitors[gpio_pin] = monitor
                 if (rpi_input['action_type'] == 'printer_control' and rpi_input['printer_action'] != 'filament'):
-                    GPIO.add_event_detect(gpio_pin, edge, callback=self.handle_printer_action, bouncetime=200)
-                    self._logger.info("Adding PRINTER CONTROL event detect on pin %s with edge: %s", gpio_pin, edge)
+                    self._logger.info("Adding PRINTER CONTROL event detect on pin %s with edge: %s", gpio_pin, edge_str)
+                    monitor = GpiodMonitor(gpio_pin, edge_str, pull_resistor_str, self.handle_printer_action, self._logger)
+                    monitor.start()
+                    active_gpiod_monitors[gpio_pin] = monitor
             
             for rpi_input in list(filter(lambda item: item['input_type'] == 'temperature_sensor', self.rpi_inputs)):
                 gpio_pin = self.to_int(rpi_input['gpio_pin'])
@@ -1745,7 +1852,7 @@ class EnclosurePlugin(octoprint.plugin.StartupPlugin, octoprint.plugin.TemplateP
                     lambda item: item['input_type'] == 'gpio' and item['action_type'] == 'printer_control' and item[
                         'printer_action'] == 'filament' and self.to_int(item['gpio_pin']) == self.to_int(channel),
                     self.rpi_inputs)):
-                if ((filament_sensor['edge'] == 'fall') ^ (GPIO.input(self.to_int(filament_sensor['gpio_pin']))) and
+                if ((filament_sensor['edge'] == 'fall') ^ bool(get_gpio_input(self.to_int(filament_sensor['gpio_pin']))) and
                         filament_sensor['filament_sensor_enabled']):
                     last_detected_time = list(filter(lambda item: item['index_id'] == filament_sensor['index_id'],
                                                      self.last_filament_end_detected)).pop()['time']
@@ -1777,16 +1884,20 @@ class EnclosurePlugin(octoprint.plugin.StartupPlugin, octoprint.plugin.TemplateP
             for filament_sensor in list(filter(
                     lambda item: item['input_type'] == 'gpio' and item['action_type'] == 'printer_control' and item[
                         'printer_action'] == 'filament', self.rpi_inputs)):
-                edge = GPIO.RISING if filament_sensor['edge'] == 'rise' else GPIO.FALLING
-                if GPIO.input(self.to_int(filament_sensor['gpio_pin'])) == (edge == GPIO.RISING):
+                edge_val = 1 if filament_sensor['edge'] == 'rise' else 0
+                if get_gpio_input(self.to_int(filament_sensor['gpio_pin'])) == edge_val:
                     self._printer.pause_print()
                     self._logger.info("Started printing with no filament.")
                 else:
                     self.last_filament_end_detected.append(dict(index_id=filament_sensor['index_id'], time=0))
                     self._logger.info("Adding GPIO event detect on pin %s with edge: %s", filament_sensor['gpio_pin'],
-                        edge)
-                    GPIO.add_event_detect(self.to_int(filament_sensor['gpio_pin']), edge,
-                        callback=self.handle_filamment_detection, bouncetime=200)
+                        filament_sensor['edge'])
+                    pin = self.to_int(filament_sensor['gpio_pin'])
+                    if pin in active_gpiod_monitors:
+                        active_gpiod_monitors[pin].stop()
+                    monitor = GpiodMonitor(pin, filament_sensor['edge'], filament_sensor.get('input_pull_resistor', 'input_pull_up'), self.handle_filamment_detection, self._logger)
+                    monitor.start()
+                    active_gpiod_monitors[pin] = monitor
         except Exception as ex:
             self.log_error(ex)
 
@@ -1796,7 +1907,10 @@ class EnclosurePlugin(octoprint.plugin.StartupPlugin, octoprint.plugin.TemplateP
             for filament_sensor in list(filter(
                     lambda item: item['input_type'] == 'gpio' and item['action_type'] == 'printer_control' and item[
                         'printer_action'] == 'filament', self.rpi_inputs)):
-                GPIO.remove_event_detect(self.to_int(filament_sensor['gpio_pin']))
+                pin = self.to_int(filament_sensor['gpio_pin'])
+                if pin in active_gpiod_monitors:
+                    active_gpiod_monitors[pin].stop()
+                    active_gpiod_monitors.pop(pin, None)
         except Exception as ex:
             self.log_error(ex)
 
@@ -1815,7 +1929,7 @@ class EnclosurePlugin(octoprint.plugin.StartupPlugin, octoprint.plugin.TemplateP
                            self.rpi_inputs)):
                 gpio_pin = self.to_int(rpi_input['gpio_pin'])
                 controlled_io = self.to_int(rpi_input['controlled_io'])
-                if (rpi_input['edge'] == 'fall') ^ GPIO.input(gpio_pin):
+                if (rpi_input['edge'] == 'fall') ^ bool(get_gpio_input(gpio_pin)):
                     rpi_output = [r_out for r_out in self.rpi_outputs if
                                   self.to_int(r_out['index_id']) == controlled_io].pop()
                     if rpi_output['output_type'] == 'regular':
@@ -1847,13 +1961,13 @@ class EnclosurePlugin(octoprint.plugin.StartupPlugin, octoprint.plugin.TemplateP
                     filter(lambda item: self.to_int(item['gpio_pin']) == self.to_int(channel), self.rpi_inputs)):
                 gpio_pin = self.to_int(rpi_input['gpio_pin'])
                 controlled_io = self.to_int(rpi_input['controlled_io'])
-                if (rpi_input['edge'] == 'fall') ^ GPIO.input(gpio_pin):
+                if (rpi_input['edge'] == 'fall') ^ bool(get_gpio_input(gpio_pin)):
                     rpi_output = [r_out for r_out in self.rpi_outputs if
                                   self.to_int(r_out['index_id']) == controlled_io].pop()
                     if rpi_output['output_type'] == 'regular':
                         if rpi_input['controlled_io_set_value'] == 'toggle':
-                            val = GPIO.LOW if GPIO.input(
-                                self.to_int(rpi_output['gpio_pin'])) == GPIO.HIGH else GPIO.HIGH
+                            val = GPIO.LOW if get_gpio_input(
+                                self.to_int(rpi_output['gpio_pin'])) else GPIO.HIGH
                         else:
                             val = GPIO.LOW if rpi_input['controlled_io_set_value'] == 'low' else GPIO.HIGH
                         if rpi_output['gpio_i2c_enabled']:
@@ -1892,7 +2006,7 @@ class EnclosurePlugin(octoprint.plugin.StartupPlugin, octoprint.plugin.TemplateP
             for rpi_input in self.rpi_inputs:
                 if (channel == self.to_int(rpi_input['gpio_pin']) and rpi_input[
                     'action_type'] == 'printer_control' and (
-                        (rpi_input['edge'] == 'fall') ^ GPIO.input(self.to_int(rpi_input['gpio_pin'])))):
+                        (rpi_input['edge'] == 'fall') ^ bool(get_gpio_input(self.to_int(rpi_input['gpio_pin']))))):
                     if rpi_input['printer_action'] == 'resume':
                         self._logger.info("Printer action resume.")
                         self._printer.resume_print()
@@ -2420,7 +2534,7 @@ class EnclosurePlugin(octoprint.plugin.StartupPlugin, octoprint.plugin.TemplateP
         return parsed_temps
 
 
-__plugin_name__ = "Enclosure Plugin"
+__plugin_name__ = "OctoPrint-Enclosure-V2-Beta"
 __plugin_pythoncompat__ = ">=2.7,<4"
 
 
