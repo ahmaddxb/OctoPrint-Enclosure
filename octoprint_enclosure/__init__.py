@@ -63,6 +63,7 @@ import threading
 import os
 
 active_gpiod_monitors = {}
+active_gpiod_outputs = {}
 
 class GpiodMonitor:
     def __init__(self, pin, edge_str, pull_resistor_str, callback, logger):
@@ -144,6 +145,18 @@ class GpiodMonitor:
 def get_gpio_input(pin):
     if pin in active_gpiod_monitors:
         return active_gpiod_monitors[pin].get_value()
+    if pin in active_gpiod_outputs:
+        try:
+            import gpiod
+            val = active_gpiod_outputs[pin].get_value(pin)
+            return 1 if val == gpiod.line.Value.ACTIVE else 0
+        except:
+            pass
+    try:
+        if getattr(GPIO, '__name__', '') != 'MockGPIO':
+            return GPIO.input(pin)
+    except:
+        pass
     try:
         import gpiod
         chip_path = '/dev/gpiochip4' if os.path.exists('/dev/gpiochip4') else '/dev/gpiochip0'
@@ -156,11 +169,7 @@ def get_gpio_input(pin):
             return 1 if val == gpiod.line.Value.ACTIVE else 0
     except:
         pass
-    try:
-        import RPi.GPIO as GPIO
-        return GPIO.input(pin)
-    except:
-        return 0
+    return 0
 
 
 #Function that returns Boolean output state of the GPIO inputs / outputs
@@ -1775,7 +1784,13 @@ class EnclosurePlugin(octoprint.plugin.StartupPlugin, octoprint.plugin.TemplateP
                     self.rpi_outputs)):
                 gpio_pin = self.to_int(gpio_out['gpio_pin'])
                 if gpio_pin not in self.rpi_outputs_not_changed:
-                    GPIO.cleanup(gpio_pin)
+                    if getattr(GPIO, '__name__', '') == 'MockGPIO':
+                        pass
+                    else:
+                        GPIO.cleanup(gpio_pin)
+                if gpio_pin in active_gpiod_outputs:
+                    active_gpiod_outputs[gpio_pin].release()
+                    active_gpiod_outputs.pop(gpio_pin, None)
 
             for gpio_in in list(filter(lambda item: item['input_type'] == 'gpio', self.rpi_inputs)):
                 pingpio = self.to_int(gpio_in['gpio_pin'])
@@ -1787,7 +1802,12 @@ class EnclosurePlugin(octoprint.plugin.StartupPlugin, octoprint.plugin.TemplateP
 
     def clear_channel(self, channel):
         try:
-            GPIO.cleanup(self.to_int(channel))
+            if getattr(GPIO, '__name__', '') != 'MockGPIO':
+                GPIO.cleanup(self.to_int(channel))
+            ch_int = self.to_int(channel)
+            if ch_int in active_gpiod_outputs:
+                active_gpiod_outputs[ch_int].release()
+                active_gpiod_outputs.pop(ch_int, None)
             self._logger.debug("Clearing channel %s", channel)
         except Exception as ex:
             self.log_error(ex)
@@ -1809,7 +1829,10 @@ class EnclosurePlugin(octoprint.plugin.StartupPlugin, octoprint.plugin.TemplateP
                 pin = self.to_int(gpio_out['gpio_pin'])
                 if pin not in self.rpi_outputs_not_changed:
                     self._logger.info("Setting GPIO pin %s as OUTPUT with initial value: %s", pin, initial_value)
-                    GPIO.setup(pin, GPIO.OUT, initial=initial_value)
+                    if getattr(GPIO, '__name__', '') == 'MockGPIO':
+                        self.write_gpio(pin, initial_value)
+                    else:
+                        GPIO.setup(pin, GPIO.OUT, initial=initial_value)
             for gpio_out_pwm in list(filter(lambda item: item['output_type'] == 'pwm', self.rpi_outputs)):
                 pin = self.to_int(gpio_out_pwm['gpio_pin'])
                 self._logger.info("Setting GPIO pin %s as PWM", pin)
@@ -2086,7 +2109,23 @@ class EnclosurePlugin(octoprint.plugin.StartupPlugin, octoprint.plugin.TemplateP
 
     def write_gpio(self, gpio, value, queue_id=None):
         try:
-            GPIO.output(gpio, value)
+            if getattr(GPIO, '__name__', '') == 'MockGPIO':
+                import gpiod
+                if gpio not in active_gpiod_outputs:
+                    chip_path = '/dev/gpiochip4' if os.path.exists('/dev/gpiochip4') else '/dev/gpiochip0'
+                    req = gpiod.request_lines(
+                        chip_path,
+                        consumer="octoprint-enclosure-write",
+                        config={gpio: gpiod.LineSettings(
+                            direction=gpiod.line.Direction.OUTPUT, 
+                            output_value=gpiod.line.Value.ACTIVE if value else gpiod.line.Value.INACTIVE
+                        )}
+                    )
+                    active_gpiod_outputs[gpio] = req
+                else:
+                    active_gpiod_outputs[gpio].set_value(gpio, gpiod.line.Value.ACTIVE if value else gpiod.line.Value.INACTIVE)
+            else:
+                GPIO.output(gpio, value)
             if queue_id is not None:
                 self._logger.debug("Running scheduled queue id %s", queue_id)
             self._logger.debug("Writing on GPIO: %s value %s", gpio, value)
