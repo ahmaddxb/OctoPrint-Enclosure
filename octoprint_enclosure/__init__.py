@@ -6,8 +6,18 @@ from subprocess import Popen, PIPE
 from .ledstrip import LEDStrip
 import octoprint.plugin
 try:
-    import RPi.GPIO as GPIO
+    import gpiod
+    USE_GPIOD = True
 except Exception:
+    USE_GPIOD = False
+
+if not USE_GPIOD:
+    try:
+        import RPi.GPIO as GPIO
+    except Exception:
+        USE_GPIOD = True
+
+if USE_GPIOD:
     class MockGPIO:
         LOW = 0
         HIGH = 1
@@ -1620,7 +1630,6 @@ class EnclosurePlugin(octoprint.plugin.StartupPlugin, octoprint.plugin.TemplateP
 
         except Exception as ex:
             self.log_error(ex)
-
 
     def handle_pwm_linked_temperature(self):
         try:
