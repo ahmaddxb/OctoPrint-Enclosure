@@ -2014,19 +2014,29 @@ class EnclosurePlugin(octoprint.plugin.StartupPlugin, octoprint.plugin.TemplateP
     def handle_gpio_control(self, channel):
 
         try:
-            self._logger.debug("GPIO event triggered on channel %s", channel)
+            self._logger.info("====================================")
+            self._logger.info("GPIO event triggered on channel %s", channel)
             for rpi_input in list(
                     filter(lambda item: self.to_int(item['gpio_pin']) == self.to_int(channel), self.rpi_inputs)):
                 gpio_pin = self.to_int(rpi_input['gpio_pin'])
                 controlled_io = self.to_int(rpi_input['controlled_io'])
-                if (rpi_input['edge'] == 'fall') ^ bool(get_gpio_input(gpio_pin)):
+                
+                self._logger.info("Matched input config for pin %s controlling IO index %s", gpio_pin, controlled_io)
+                pin_state = bool(get_gpio_input(gpio_pin))
+                self._logger.info("Pin %s state is currently: %s, configured edge: %s", gpio_pin, pin_state, rpi_input['edge'])
+
+                if (rpi_input['edge'] == 'fall') ^ pin_state:
+                    self._logger.info("Condition met to execute action!")
                     rpi_output = [r_out for r_out in self.rpi_outputs if
                                   self.to_int(r_out['index_id']) == controlled_io].pop()
+                    self._logger.info("Found mapped output for IO %s: pin %s (type: %s)", controlled_io, rpi_output.get('gpio_pin'), rpi_output.get('output_type'))
                     if rpi_output['output_type'] == 'regular':
                         if rpi_input['controlled_io_set_value'] == 'toggle':
-                            val = GPIO.LOW if get_gpio_input(
-                                self.to_int(rpi_output['gpio_pin'])) else GPIO.HIGH
+                            current_output_state = get_gpio_input(self.to_int(rpi_output['gpio_pin']))
+                            self._logger.info("Toggling output pin %s. Current state: %s", rpi_output['gpio_pin'], current_output_state)
+                            val = GPIO.LOW if current_output_state else GPIO.HIGH
                         else:
+                            self._logger.info("Setting output pin %s strictly to %s", rpi_output['gpio_pin'], rpi_input['controlled_io_set_value'])
                             val = GPIO.LOW if rpi_input['controlled_io_set_value'] == 'low' else GPIO.HIGH
                         if rpi_output['gpio_i2c_enabled']:
                             self.gpio_i2c_write(rpi_output, val)
@@ -2109,10 +2119,13 @@ class EnclosurePlugin(octoprint.plugin.StartupPlugin, octoprint.plugin.TemplateP
 
     def write_gpio(self, gpio, value, queue_id=None):
         try:
+            self._logger.info("----------- write_gpio() invoked for pin %s, turning to %s -----------", gpio, value)
             if type(GPIO).__name__ == 'MockGPIO':
+                self._logger.info("Using libgpiod fallback (MockGPIO mode active) for output %s", gpio)
                 import gpiod
                 if gpio not in active_gpiod_outputs:
                     chip_path = '/dev/gpiochip4' if os.path.exists('/dev/gpiochip4') else '/dev/gpiochip0'
+                    self._logger.info("Initializing new libgpiod output line %s on %s", gpio, chip_path)
                     req = gpiod.request_lines(
                         chip_path,
                         consumer="octoprint-enclosure-write",
@@ -2123,8 +2136,10 @@ class EnclosurePlugin(octoprint.plugin.StartupPlugin, octoprint.plugin.TemplateP
                     )
                     active_gpiod_outputs[gpio] = req
                 else:
+                    self._logger.info("Modifying existing libgpiod line %s to %s", gpio, value)
                     active_gpiod_outputs[gpio].set_value(gpio, gpiod.line.Value.ACTIVE if value else gpiod.line.Value.INACTIVE)
             else:
+                self._logger.info("Using RPi.GPIO library natively for output %s to %s", gpio, value)
                 GPIO.output(gpio, value)
             if queue_id is not None:
                 self._logger.debug("Running scheduled queue id %s", queue_id)
