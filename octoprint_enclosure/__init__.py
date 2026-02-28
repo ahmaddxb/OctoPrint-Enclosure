@@ -153,7 +153,7 @@ def get_gpio_input(pin):
         except:
             pass
     try:
-        if getattr(GPIO, '__name__', '') != 'MockGPIO':
+        if type(GPIO).__name__ != 'MockGPIO':
             return GPIO.input(pin)
     except:
         pass
@@ -1784,7 +1784,7 @@ class EnclosurePlugin(octoprint.plugin.StartupPlugin, octoprint.plugin.TemplateP
                     self.rpi_outputs)):
                 gpio_pin = self.to_int(gpio_out['gpio_pin'])
                 if gpio_pin not in self.rpi_outputs_not_changed:
-                    if getattr(GPIO, '__name__', '') == 'MockGPIO':
+                    if type(GPIO).__name__ == 'MockGPIO':
                         pass
                     else:
                         GPIO.cleanup(gpio_pin)
@@ -1802,7 +1802,7 @@ class EnclosurePlugin(octoprint.plugin.StartupPlugin, octoprint.plugin.TemplateP
 
     def clear_channel(self, channel):
         try:
-            if getattr(GPIO, '__name__', '') != 'MockGPIO':
+            if type(GPIO).__name__ != 'MockGPIO':
                 GPIO.cleanup(self.to_int(channel))
             ch_int = self.to_int(channel)
             if ch_int in active_gpiod_outputs:
@@ -1829,7 +1829,7 @@ class EnclosurePlugin(octoprint.plugin.StartupPlugin, octoprint.plugin.TemplateP
                 pin = self.to_int(gpio_out['gpio_pin'])
                 if pin not in self.rpi_outputs_not_changed:
                     self._logger.info("Setting GPIO pin %s as OUTPUT with initial value: %s", pin, initial_value)
-                    if getattr(GPIO, '__name__', '') == 'MockGPIO':
+                    if type(GPIO).__name__ == 'MockGPIO':
                         self.write_gpio(pin, initial_value)
                     else:
                         GPIO.setup(pin, GPIO.OUT, initial=initial_value)
@@ -2109,7 +2109,7 @@ class EnclosurePlugin(octoprint.plugin.StartupPlugin, octoprint.plugin.TemplateP
 
     def write_gpio(self, gpio, value, queue_id=None):
         try:
-            if getattr(GPIO, '__name__', '') == 'MockGPIO':
+            if type(GPIO).__name__ == 'MockGPIO':
                 import gpiod
                 if gpio not in active_gpiod_outputs:
                     chip_path = '/dev/gpiochip4' if os.path.exists('/dev/gpiochip4') else '/dev/gpiochip0'
