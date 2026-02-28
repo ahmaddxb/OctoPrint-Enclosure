@@ -2537,7 +2537,7 @@ class EnclosurePlugin(octoprint.plugin.StartupPlugin, octoprint.plugin.TemplateP
         return parsed_temps
 
 
-__plugin_name__ = "OctoPrint-Enclosure-V2-Beta"
+__plugin_name__ = "OctoPrint-Enclosure"
 __plugin_pythoncompat__ = ">=2.7,<4"
 
 
