@@ -56,38 +56,36 @@ The following methods are public:
 
 import time
 try:
-    import RPi.GPIO as GPIO
+    from gpiozero import DigitalOutputDevice
 except Exception:
     pass
 
 class LEDStrip:
     def __init__(self, clock, data):
-        GPIO.setwarnings(False)
-        GPIO.setmode(GPIO.BCM)
-        self.__clock = clock
-        self.__data = data
+        self.__clock_pin = clock
+        self.__data_pin = data
         self.__delay = 0
-        GPIO.setup(self.__clock, GPIO.OUT)
-        GPIO.setup(self.__data, GPIO.OUT)
+        self.__clock = DigitalOutputDevice(self.__clock_pin, initial_value=False)
+        self.__data = DigitalOutputDevice(self.__data_pin, initial_value=False)
 
     def __sendclock(self):
-        GPIO.output(self.__clock, False)
+        self.__clock.value = False
         time.sleep(self.__delay)
-        GPIO.output(self.__clock, True)
+        self.__clock.value = True
         time.sleep(self.__delay)
 
     def __send32zero(self):
         for x in range(32):
-            GPIO.output(self.__data, False)
+            self.__data.value = False
             self.__sendclock()
 
     def __senddata(self, dx):
         self.__send32zero()
         for x in range(32):
             if ((dx & 0x80000000) != 0):
-                GPIO.output(self.__data, True)
+                self.__data.value = True
             else:
-                GPIO.output(self.__data, False)
+                self.__data.value = False
             dx <<= 1
             self.__sendclock()
         self.__send32zero()
@@ -142,4 +140,8 @@ class LEDStrip:
 
     def cleanup(self):
         self.setcolouroff()
-        GPIO.cleanup()
+        try:
+            self.__clock.close()
+            self.__data.close()
+        except:
+            pass
