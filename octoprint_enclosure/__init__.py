@@ -1790,17 +1790,26 @@ class EnclosurePlugin(octoprint.plugin.StartupPlugin, octoprint.plugin.TemplateP
                     from gpiozero import PWMLED
                     freq = self.to_int(gpio_out_pwm['pwm_frequency'])
                     if freq <= 0: freq = 100 # PWMLED crashes with 0 frequency
-                    pwm_instance = PWMLED(pin, frequency=freq)
-                    
-                    # Monkey-patch to add 'start' and 'stop' methods for backward compatibility with the rest of this plugin,
-                    # explicitly passing the instance to correctly scope closures inside the loop.
-                    def start_pwm(dc, inst=pwm_instance):
-                        inst.value = max(0.0, min(1.0, float(dc) / 100.0))
-                    def stop_pwm(inst=pwm_instance):
-                        inst.close()
-                    
-                    pwm_instance.start = start_pwm
-                    pwm_instance.stop = stop_pwm
+
+                    try:
+                        pwm_device = PWMLED(pin, frequency=freq)
+                    except Exception as pwm_ex:
+                        if "frequency" in str(pwm_ex).lower() or "cannot start" in str(pwm_ex).lower() or "bad pwm" in str(pwm_ex).lower():
+                            self._logger.warning("Unsupported PWM frequency %s on pin %s, falling back to 100Hz", freq, pin)
+                            freq = 100
+                            pwm_device = PWMLED(pin, frequency=freq)
+                        else:
+                            raise pwm_ex
+
+                    class PWMWrapper:
+                        def __init__(self, dev):
+                            self._dev = dev
+                        def start(self, dc):
+                            self._dev.value = max(0.0, min(1.0, float(dc) / 100.0))
+                        def stop(self):
+                            self._dev.close()
+
+                    pwm_instance = PWMWrapper(pwm_device)
                 except Exception as ex:
                     self._logger.error("Failed to initialize PWM on pin %s, reason: %s", pin, ex)
                     pwm_instance = None
