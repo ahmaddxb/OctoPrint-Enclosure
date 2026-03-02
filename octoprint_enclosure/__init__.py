@@ -1788,17 +1788,21 @@ class EnclosurePlugin(octoprint.plugin.StartupPlugin, octoprint.plugin.TemplateP
                 # Setup new pwm on that pin using gpiozero
                 try:
                     from gpiozero import PWMLED
-                    pwm_instance = PWMLED(pin, frequency=self.to_int(gpio_out_pwm['pwm_frequency']))
+                    freq = self.to_int(gpio_out_pwm['pwm_frequency'])
+                    if freq <= 0: freq = 100 # PWMLED crashes with 0 frequency
+                    pwm_instance = PWMLED(pin, frequency=freq)
                     
-                    # Monkey-patch to add 'start' and 'stop' methods for backward compatibility with the rest of this plugin
-                    def start_pwm(dc):
-                        pwm_instance.value = max(0.0, min(1.0, float(dc) / 100.0))
-                    def stop_pwm():
-                        pwm_instance.close()
+                    # Monkey-patch to add 'start' and 'stop' methods for backward compatibility with the rest of this plugin,
+                    # explicitly passing the instance to correctly scope closures inside the loop.
+                    def start_pwm(dc, inst=pwm_instance):
+                        inst.value = max(0.0, min(1.0, float(dc) / 100.0))
+                    def stop_pwm(inst=pwm_instance):
+                        inst.close()
                     
                     pwm_instance.start = start_pwm
                     pwm_instance.stop = stop_pwm
-                except:
+                except Exception as ex:
+                    self._logger.error("Failed to initialize PWM on pin %s, reason: %s", pin, ex)
                     pwm_instance = None
                 
                 if pwm_instance:
@@ -2092,6 +2096,7 @@ class EnclosurePlugin(octoprint.plugin.StartupPlugin, octoprint.plugin.TemplateP
 
     def write_pwm(self, gpio, pwm_value, queue_id=None):
         try:
+            gpio = self.to_int(gpio)
             if queue_id is not None:
                 self._logger.debug("running scheduled queue id %s", queue_id)
             for pwm in self.pwm_instances:
