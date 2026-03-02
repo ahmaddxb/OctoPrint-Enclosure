@@ -2222,7 +2222,7 @@ class EnclosurePlugin(octoprint.plugin.StartupPlugin, octoprint.plugin.TemplateP
                     self.send_notification(msg)
 
         if event in (Events.ERROR, Events.DISCONNECTED):
-            self._logger.info("Detected Error or Disconnect in %s will call listeners for shutdown_on_error!", event)
+            self._logger.debug("Detected Error or Disconnect in %s will call listeners for shutdown_on_error!", event)
             for rpi_output in self.rpi_outputs:
                 if rpi_output['shutdown_on_error']:
                     self._logger.debug("Schedule shutdown for: %s", rpi_output["index_id"])
@@ -2231,7 +2231,7 @@ class EnclosurePlugin(octoprint.plugin.StartupPlugin, octoprint.plugin.TemplateP
         
         if event == Events.PRINTER_STATE_CHANGED:
             if "error" in payload["state_string"].lower():
-                self._logger.info("Detected Error in %s id: %s state: %s  will call listeners for shutdown_on_error!", event, payload["state_id"], payload["state_string"])
+                self._logger.debug("Detected Error in %s id: %s state: %s  will call listeners for shutdown_on_error!", event, payload["state_id"], payload["state_string"])
                 for rpi_output in self.rpi_outputs:
                     if rpi_output['shutdown_on_error']:
                         self._logger.debug("Schedule shutdown for: %s", rpi_output["index_id"])
