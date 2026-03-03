@@ -633,6 +633,58 @@ $(function () {
       }
     };
 
+    self.testPWM = function (item) {
+      var pwm_value = item.new_duty_cycle();
+      if (pwm_value === "" || pwm_value === null) pwm_value = 100;
+      pwm_value = parseInt(pwm_value);
+
+      if (pwm_value < 0 || pwm_value > 100 || isNaN(pwm_value)) {
+        new PNotify({
+          title: "Enclosure",
+          text: "Duty Cycle value needs to be between 0 and 100!",
+          type: "error"
+        });
+      } else {
+        var old_pwm_value = item.duty_cycle();
+        var request = { new_duty_cycle: pwm_value, index_id: item.index_id() };
+        
+        $.ajax({
+          type: "GET",
+          dataType: "json",
+          data: request,
+          url: self.buildPluginUrl("/setPWM"),
+          success: function (data) {
+            item.duty_cycle(pwm_value);
+            self.getUpdateUI();
+            new PNotify({
+              title: "Enclosure",
+              text: "Testing " + item.label() + " at " + pwm_value + "% for 10 seconds...",
+              type: "info"
+            });
+
+            setTimeout(function () {
+              var revertRequest = { new_duty_cycle: old_pwm_value, index_id: item.index_id() };
+              $.ajax({
+                type: "GET",
+                dataType: "json",
+                data: revertRequest,
+                url: self.buildPluginUrl("/setPWM"),
+                success: function (data) {
+                  item.duty_cycle(old_pwm_value);
+                  self.getUpdateUI();
+                  new PNotify({
+                    title: "Enclosure",
+                    text: "Test complete. " + item.label() + " returned to " + old_pwm_value + "%.",
+                    type: "success"
+                  });
+                }
+              });
+            }, 10000);
+          }
+        });
+      }
+    };
+
     self.handleNeopixel = function (item) {
 
       var index = item.index_id() ;
