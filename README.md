@@ -41,9 +41,22 @@ Here is a list of possibilities:
 
 Check pictures on thingiverse: http://www.thingiverse.com/thing:2245493
 
-## Installation
+## Installation & Migrating to this Fork
 
-Install the plugin using the Plugin Manager bundled with OctoPrint, you can search for the Enclosure plugin or just use the url: https://github.com/ahmaddxb/OctoPrint-Enclosure/archive/master.zip.
+### For New Users:
+Install the plugin using the Plugin Manager bundled with OctoPrint. You can use the "Get More" section and paste this URL: 
+`https://github.com/ahmaddxb/OctoPrint-Enclosure/archive/master.zip`
+
+### Switching from the Original Plugin:
+If you are already using the original `vitormhenrique` version of this plugin and wish to receive the new updates from this active fork:
+1. Open OctoPrint and go to **Settings (wrench icon) > Plugin Manager**.
+2. Click **Get More** at the top.
+3. Scroll down to the **"... from URL"** section.
+4. Paste the URL: `https://github.com/ahmaddxb/OctoPrint-Enclosure/archive/master.zip`
+5. Click **Install**.
+6. Restart OctoPrint when prompted.
+
+**Note:** All of your existing enclosure settings will be preserved when you switch over. Once installed, future updates will automatically pull from this new fork's repository via OctoPrint's built-in Software Updater.
 
 ## Hardware
 
