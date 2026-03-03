@@ -21,7 +21,7 @@ $(function () {
     
     self.settings_possible_outputs = ko.pureComputed(function () {
       return ko.utils.arrayFilter(self.settingsViewModel.settings.plugins.enclosure.rpi_outputs(), function (item) {
-        return ((item.output_type() === "regular" && !item.toggle_timer()) || item.output_type() === "gcode_output" || item.output_type() === "shell_output");
+        return ((item.output_type() === "regular" && !item.toggle_timer()) || item.output_type() === "pwm" || item.output_type() === "pwm_pigpio" || item.output_type() === "gcode_output" || item.output_type() === "shell_output");
       });
     });
 
@@ -66,7 +66,7 @@ $(function () {
       return_value = false;
       if (typeof index_id != 'undefined'){
         self.settingsViewModel.settings.plugins.enclosure.rpi_outputs().forEach(function (output) {
-          if (output.index_id() == index_id && output.output_type() == "regular") {
+          if (output.index_id() == index_id && (output.output_type() == "regular" || output.output_type() == "pwm" || output.output_type() == "pwm_pigpio")) {
             return_value = true;
             return false;
           }

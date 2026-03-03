@@ -2028,6 +2028,27 @@ class EnclosurePlugin(octoprint.plugin.StartupPlugin, octoprint.plugin.TemplateP
                                     rpi_input['label']) + ". Setting GPIO" + str(
                                     rpi_input['controlled_io']) + " to: " + str(rpi_input['controlled_io_set_value'])
                                 self.send_notification(msg)
+                    
+                    if rpi_output['output_type'] in ('pwm', 'pwm_pigpio'):
+                        gpio = self.to_int(rpi_output['gpio_pin'])
+                        if rpi_input['controlled_io_set_value'] == 'toggle':
+                            current_dc = 0
+                            for pwm in self.pwm_instances:
+                                if gpio in pwm:
+                                    current_dc = self.to_int(pwm.get('duty_cycle', 0))
+                                    break
+                            val = 0 if current_dc > 0 else 100
+                            self._logger.info("Toggling PWM pin %s. Current DC: %s, target val: %s", gpio, current_dc, val)
+                        else:
+                            self._logger.info("Setting PWM pin %s strictly to %s", gpio, rpi_input['controlled_io_set_value'])
+                            val = 0 if rpi_input['controlled_io_set_value'] == 'low' else 100
+                        self.write_pwm(gpio, val)
+                        for notification in self.notifications:
+                            if notification['gpioAction']:
+                                msg = "GPIO control action caused by input " + str(
+                                    rpi_input['label']) + ". Setting PWM " + str(
+                                    rpi_input['controlled_io']) + " duty cycle to: " + str(val)
+                                self.send_notification(msg)
                     if rpi_output['output_type'] == 'gcode_output':
                         self.send_gcode_command(rpi_output['gcode'])
                         for notification in self.notifications:
@@ -2602,7 +2623,7 @@ class EnclosurePlugin(octoprint.plugin.StartupPlugin, octoprint.plugin.TemplateP
 
 __plugin_name__ = "Enclosure Plugin"
 __plugin_pythoncompat__ = ">=2.7,<4"
-__plugin_version__ = "5.0.4"
+__plugin_version__ = "5.0.5"
 
 
 def __plugin_load__():
