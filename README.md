@@ -14,7 +14,8 @@ This repository is a modern fork of the original OctoPrint-Enclosure plugin. It 
 
 * **Replaced `RPi.GPIO` with `gpiod`**: Solves "Device or Resource Busy" errors and lockups on modern kernels.
 * **Hardware PWM Support**: Added "PWM (Hardware)" using the `pigpio` daemon. The plugin now attempts to **automatically start `pigpiod`** if it isn't running. ![NEW](https://img.shields.io/badge/NEW-green)
-* **PWM UI Enhancements**: Added **Quick ON (100%)** and **OFF (0%)** buttons to the Enclosure tab for all PWM outputs for faster control. ![NEW](https://img.shields.io/badge/NEW-green)
+* **PWM UI Enhancements**: Added **Quick ON (100%)** and **OFF (0%)** buttons. Added a **"Test (10s)"** button for temperature-linked PWM outputs to simplify fan/heater tuning. ![NEW](https://img.shields.io/badge/NEW-green)
+* **PWM Navbar Shortcuts**: PWM outputs can now be shown on the OctoPrint Navbar with a toggle functionality (0/100%) and real-time status display. ![NEW](https://img.shields.io/badge/NEW-green)
 * **Physical PWM Buttons**: Physical GPIO input buttons can now be mapped to control PWM outputs (Toggle between 0/100%, or set High/Low). ![NEW](https://img.shields.io/badge/NEW-green)
 * **Robust Software PWM**: Upgraded standard PWM to use `gpiozero` and `rpi-lgpio` with graceful fallbacks for unsupported frequencies.
 * **Bug Fixes**: Resolved UnboundLocalErrors in the EMC2101 fan logic and cleaned up duplicate threading imports.
