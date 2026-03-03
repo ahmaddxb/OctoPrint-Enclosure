@@ -39,14 +39,22 @@
     <!-- /ko -->
     <!-- /ko -->
 
-    <!-- ko if: ($data.output_type() == "shell_output")  -->
+    <!-- /ko -->
+    
+    <!-- ko if: ($data.output_type() == "pwm" || $data.output_type() == "pwm_pigpio")  -->
     <li>
-        <a href="javascript:void(0)" data-bind="click: $root.handleShellOutput">
+        <a href="javascript:void(0)" data-bind="click: $root.handlePWMNavbar">
             <span data-bind="html: label"> </span>
-            <span class="badge badge-info">shell</span>
+            <!-- ko if: (parseInt($data.duty_cycle()) > 0)  -->
+            <span class="badge badge-success help-inline" data-bind="text: $data.duty_cycle() + '%'"></span>
+            <!-- /ko -->
+            <!-- ko ifnot: (parseInt($data.duty_cycle()) > 0)  -->
+            <span class="badge badge-important help-inline">off</span>
+            <!-- /ko -->
         </a>
     </li>
     <!-- /ko -->
+
 
     <!-- /ko -->
 

@@ -106,7 +106,7 @@ $(function () {
     self.hasAnyNavbarOutput = function(){
       return_value = false;
       self.rpi_outputs().forEach(function (output) {
-        if ((output.output_type()=="regular" || output.output_type()=="gcode_output") && output.show_on_navbar()) {
+        if ((output.output_type()=="regular" || output.output_type()=="gcode_output" || output.output_type()=="pwm" || output.output_type()=="pwm_pigpio") && output.show_on_navbar()) {
           return_value = true;
           return false;
         }
@@ -632,6 +632,23 @@ $(function () {
         });
       }
     };
+
+    self.handlePWMNavbar = function (item) {
+      var current_duty = parseInt(item.duty_cycle());
+      var new_value = (current_duty > 0) ? 0 : 100;
+      var request = { new_duty_cycle: new_value, index_id: item.index_id() };
+      $.ajax({
+        type: "GET",
+        dataType: "json",
+        data: request,
+        url: self.buildPluginUrl("/setPWM"),
+        success: function (data) {
+          item.duty_cycle(new_value);
+          self.getUpdateUI();
+        }
+      });
+    };
+
 
     self.testPWM = function (item) {
       var pwm_value = item.new_duty_cycle();
