@@ -9,6 +9,8 @@ I'm moving away from it, and when ready the replacement plugin would be here: ht
 This repository is a modern fork of the original OctoPrint-Enclosure plugin. It includes several key improvements to support newer Raspberry Pi environments and Linux kernels (like Bookworm):
 
 > ⚠️ **WARNING:** This fork is in very early stages! It was primarily created to get my own OctoPrint instance up and running again due to the recent system-level changes made to OctoPi. **Always make a backup** of your OctoPrint setup and Enclosure settings before installing or migrating!
+>
+> ⚠️ **COMPATIBILITY NOTICE:** This fork relies on modern Linux interfaces like `gpiod` that are not available or default on older systems. Therefore, this fork is **not backwards compatible**. It strictly requires **OctoPi 1.0.0+ (Debian Bookworm)** or a similarly modern OS to run. If you are on an older OS (like Debian Buster or Bullseye), please stick to the original plugin.
 
 * **Replaced `RPi.GPIO` with `gpiod`**: Solves "Device or Resource Busy" errors and lockups on modern kernels.
 * **Hardware PWM Support**: Added a new output type for "PWM (Hardware)" utilizing the `pigpio` daemon (`pigpiod` must be running).
