@@ -13,9 +13,9 @@ This repository is a modern fork of the original OctoPrint-Enclosure plugin. It 
 > ⚠️ **COMPATIBILITY NOTICE:** This fork relies on modern Linux interfaces like `gpiod` that are not available or default on older systems. Therefore, this fork is **not backwards compatible**. It strictly requires **OctoPi 1.0.0+ (Debian Bookworm)** or a similarly modern OS to run. If you are on an older OS (like Debian Buster or Bullseye), please stick to the original plugin.
 
 * **Replaced `RPi.GPIO` with `gpiod`**: Solves "Device or Resource Busy" errors and lockups on modern kernels.
-* **Hardware PWM Support**: Added "PWM (Hardware)" using the `pigpio` daemon. The plugin now attempts to **automatically start `pigpiod`** if it isn't running. ![NEW](https://img.shields.io/badge/-%F0%9F%A4%96%20NEW-brightgreen)
-* **PWM UI Enhancements**: Added **Quick ON (100%)** and **OFF (0%)** buttons to the Enclosure tab for all PWM outputs for faster control. ![NEW](https://img.shields.io/badge/-%F0%9F%A4%96%20NEW-brightgreen)
-* **Physical PWM Buttons**: Physical GPIO input buttons can now be mapped to control PWM outputs (Toggle between 0/100%, or set High/Low). ![NEW](https://img.shields.io/badge/-%F0%9F%A4%96%20NEW-brightgreen)
+* **Hardware PWM Support**: Added "PWM (Hardware)" using the `pigpio` daemon. The plugin now attempts to **automatically start `pigpiod`** if it isn't running. ![NEW](https://img.shields.io/badge/NEW-green)
+* **PWM UI Enhancements**: Added **Quick ON (100%)** and **OFF (0%)** buttons to the Enclosure tab for all PWM outputs for faster control. ![NEW](https://img.shields.io/badge/NEW-green)
+* **Physical PWM Buttons**: Physical GPIO input buttons can now be mapped to control PWM outputs (Toggle between 0/100%, or set High/Low). ![NEW](https://img.shields.io/badge/NEW-green)
 * **Robust Software PWM**: Upgraded standard PWM to use `gpiozero` and `rpi-lgpio` with graceful fallbacks for unsupported frequencies.
 * **Bug Fixes**: Resolved UnboundLocalErrors in the EMC2101 fan logic and cleaned up duplicate threading imports.
 * **Log Polish**: Dropped idle connection errors to the debug level to prevent log file spam when the printer is disconnected.
@@ -34,18 +34,18 @@ Here is a list of possibilities:
 * Add temperature sensors on your enclosure or near your printer
 * Add active heaters on your enclosure and keep the temperature nice and high for large ABS 
 * Software PWM controlled outputs
-* Hardware PWM controlled outputs for precise, jitter-free signal generation ![NEW](https://img.shields.io/badge/-%F0%9F%A4%96%20NEW-brightgreen)
+* Hardware PWM controlled outputs for precise, jitter-free signal generation ![NEW](https://img.shields.io/badge/NEW-green)
 * PWM controlled outputs based on temperature sensor
 * Active cooling for good PLA printing
 * Schedule GPIO's to turn on and off with a fixed period of time during printing.
 * Mechanical buttons to pause and resume printer jobs
 * Mechanical buttons to send GCODE to the printer
-* Mechanical buttons to control raspberry pi GPIO (including PWM output toggle) ![NEW](https://img.shields.io/badge/-%F0%9F%A4%96%20NEW-brightgreen)
+* Mechanical buttons to control raspberry pi GPIO (including PWM output toggle) ![NEW](https://img.shields.io/badge/NEW-green)
 * Multiple filament sensors for dual or more extruders
 * Alarm when enclosure temperature reaches some sort of value
 * Notifications using IFTTT when events happen (temperature trigger / print events / etc)
 * Add sub-menus on navbar to quick access outputs and temperature sensors
-* Full support for modern Raspberry Pi Linux kernels like Bookworm ![NEW](https://img.shields.io/badge/-%F0%9F%A4%96%20NEW-brightgreen)
+* Full support for modern Raspberry Pi Linux kernels like Bookworm ![NEW](https://img.shields.io/badge/NEW-green)
 
 Check pictures on thingiverse: http://www.thingiverse.com/thing:2245493
 
