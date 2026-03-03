@@ -1812,9 +1812,19 @@ class EnclosurePlugin(octoprint.plugin.StartupPlugin, octoprint.plugin.TemplateP
                         pwm_instance = PWMWrapper(pwm_device)
                     else:
                         import pigpio
+                        import time
+                        import subprocess
                         pi = pigpio.pi()
                         if not pi.connected:
-                            raise Exception("pigpio daemon is not running!")
+                            self._logger.info("pigpio daemon is not running, attempting to start it automatically...")
+                            # Attempt to start pigpiod using sudo
+                            # Using 'sudo pigpiod' directly or 'sudo systemctl start pigpiod'
+                            subprocess.run(["sudo", "systemctl", "start", "pigpiod"], capture_output=True)
+                            time.sleep(1) # wait for daemon to spin up
+                            
+                            pi = pigpio.pi() # retry connection
+                            if not pi.connected:
+                                raise Exception("pigpio daemon is not running and could not be started automatically. Please run 'sudo apt-get install pigpio && sudo systemctl enable pigpiod && sudo systemctl start pigpiod' manually.")
                         class PigpioPWMWrapper:
                             def __init__(self, pi, pin, frequency):
                                 self._pi = pi
