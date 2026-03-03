@@ -1016,7 +1016,7 @@ class EnclosurePlugin(octoprint.plugin.StartupPlugin, octoprint.plugin.TemplateP
                 self.update_ui_outputs()
                 return
 
-            if output['output_type'] == 'pwm':
+            if output['output_type'] in ('pwm', 'pwm_pigpio'):
                 for pwm in self.pwm_instances:
                     if gpio_pin in pwm:
                         if first_run:
@@ -1103,7 +1103,7 @@ class EnclosurePlugin(octoprint.plugin.StartupPlugin, octoprint.plugin.TemplateP
                     val = output['neopixel_color']
                     neopixel_status.append(
                         dict(index_id=index, color=val, auto_startup=startup, auto_shutdown=shutdown))
-                if output['output_type'] == 'pwm':
+                if output['output_type'] in ('pwm', 'pwm_pigpio'):
                     for pwm in self.pwm_instances:
                         if pin in pwm:
                             if 'duty_cycle' in pwm:
@@ -1589,7 +1589,7 @@ class EnclosurePlugin(octoprint.plugin.StartupPlugin, octoprint.plugin.TemplateP
 
     def handle_pwm_linked_temperature(self):
         try:
-            for pwm_output in list(filter(lambda item: item['output_type'] == 'pwm' and item['pwm_temperature_linked'],
+            for pwm_output in list(filter(lambda item: item['output_type'] in ('pwm', 'pwm_pigpio') and item['pwm_temperature_linked'],
                                           self.rpi_outputs)):
                 gpio_pin = self.to_int(pwm_output['gpio_pin'])
                 if self._printer.is_printing():
@@ -1719,7 +1719,7 @@ class EnclosurePlugin(octoprint.plugin.StartupPlugin, octoprint.plugin.TemplateP
         try:
 
             for gpio_out in list(filter(
-                    lambda item: (item['output_type'] == 'regular' or item['output_type'] == 'pwm' or item[
+                    lambda item: (item['output_type'] == 'regular' or item['output_type'] in ('pwm', 'pwm_pigpio') or item[
                         'output_type'] == 'temp_hum_control' or item['output_type'] == 'neopixel_direct') and
                         item['gpio_i2c_enabled'] == False,
                     self.rpi_outputs)):
@@ -1766,7 +1766,7 @@ class EnclosurePlugin(octoprint.plugin.StartupPlugin, octoprint.plugin.TemplateP
                 if pin not in self.rpi_outputs_not_changed:
                     self._logger.info("Setting GPIO pin %s as OUTPUT with initial value: %s", pin, initial_value)
                     self.write_gpio(pin, initial_value)
-            for gpio_out_pwm in list(filter(lambda item: item['output_type'] == 'pwm', self.rpi_outputs)):
+            for gpio_out_pwm in list(filter(lambda item: item['output_type'] in ('pwm', 'pwm_pigpio'), self.rpi_outputs)):
                 pin = self.to_int(gpio_out_pwm['gpio_pin'])
                 self._logger.info("Setting GPIO pin %s as PWM", pin)
                 
@@ -1785,31 +1785,48 @@ class EnclosurePlugin(octoprint.plugin.StartupPlugin, octoprint.plugin.TemplateP
                 # Clear the pin
                 self.clear_channel(pin)
                 
-                # Setup new pwm on that pin using gpiozero
                 try:
-                    from gpiozero import PWMLED
                     freq = self.to_int(gpio_out_pwm['pwm_frequency'])
-                    if freq <= 0: freq = 100 # PWMLED crashes with 0 frequency
-
-                    try:
-                        pwm_device = PWMLED(pin, frequency=freq)
-                    except Exception as pwm_ex:
-                        if "frequency" in str(pwm_ex).lower() or "cannot start" in str(pwm_ex).lower() or "bad pwm" in str(pwm_ex).lower():
-                            self._logger.warning("Unsupported PWM frequency %s on pin %s, falling back to 100Hz", freq, pin)
-                            freq = 100
+                    if freq <= 0: freq = 100 # Default frequency
+                    
+                    if gpio_out_pwm['output_type'] == 'pwm':
+                        from gpiozero import PWMLED
+                        try:
                             pwm_device = PWMLED(pin, frequency=freq)
-                        else:
-                            raise pwm_ex
+                        except Exception as pwm_ex:
+                            if "frequency" in str(pwm_ex).lower() or "cannot start" in str(pwm_ex).lower() or "bad pwm" in str(pwm_ex).lower():
+                                self._logger.warning("Unsupported PWM frequency %s on pin %s, falling back to 100Hz", freq, pin)
+                                freq = 100
+                                pwm_device = PWMLED(pin, frequency=freq)
+                            else:
+                                raise pwm_ex
 
-                    class PWMWrapper:
-                        def __init__(self, dev):
-                            self._dev = dev
-                        def start(self, dc):
-                            self._dev.value = max(0.0, min(1.0, float(dc) / 100.0))
-                        def stop(self):
-                            self._dev.close()
+                        class PWMWrapper:
+                            def __init__(self, dev):
+                                self._dev = dev
+                            def start(self, dc):
+                                self._dev.value = max(0.0, min(1.0, float(dc) / 100.0))
+                            def stop(self):
+                                self._dev.close()
 
-                    pwm_instance = PWMWrapper(pwm_device)
+                        pwm_instance = PWMWrapper(pwm_device)
+                    else:
+                        import pigpio
+                        pi = pigpio.pi()
+                        if not pi.connected:
+                            raise Exception("pigpio daemon is not running!")
+                        class PigpioPWMWrapper:
+                            def __init__(self, pi, pin, frequency):
+                                self._pi = pi
+                                self._pin = pin
+                                self._pi.set_PWM_frequency(self._pin, frequency)
+                                self._pi.set_PWM_range(self._pin, 100)
+                            def start(self, dc):
+                                self._pi.set_PWM_dutycycle(self._pin, max(0.0, min(100.0, float(dc))))
+                            def stop(self):
+                                self._pi.set_PWM_dutycycle(self._pin, 0)
+                                self._pi.stop()
+                        pwm_instance = PigpioPWMWrapper(pi, pin, freq)
                 except Exception as ex:
                     self._logger.error("Failed to initialize PWM on pin %s, reason: %s", pin, ex)
                     pwm_instance = None
@@ -2189,7 +2206,7 @@ class EnclosurePlugin(octoprint.plugin.StartupPlugin, octoprint.plugin.TemplateP
                     delay_seconds = self.get_startup_delay_from_output(rpi_output)
                     self.schedule_auto_startup_outputs(rpi_output, delay_seconds)
                 if rpi_output['toggle_timer']:
-                    if rpi_output['output_type'] == 'regular' or rpi_output['output_type'] == 'pwm':
+                    if rpi_output['output_type'] == 'regular' or rpi_output['output_type'] in ('pwm', 'pwm_pigpio'):
                         self.toggle_output(rpi_output['index_id'], True)
                 if self.is_hour(rpi_output['shutdown_time']):
                     shutdown_delay_seconds = self.get_shutdown_delay_from_output(rpi_output)
@@ -2202,7 +2219,7 @@ class EnclosurePlugin(octoprint.plugin.StartupPlugin, octoprint.plugin.TemplateP
             self.print_complete = True
             for rpi_output in self.rpi_outputs:
                 shutdown_time = rpi_output['shutdown_time']
-                if rpi_output['output_type'] == 'pwm' and rpi_output['pwm_temperature_linked']:
+                if rpi_output['output_type'] in ('pwm', 'pwm_pigpio') and rpi_output['pwm_temperature_linked']:
                     rpi_output['duty_cycle'] = rpi_output['default_duty_cycle']
                 if rpi_output['auto_shutdown'] and not self.is_hour(shutdown_time):
                     delay_seconds = self.to_float(shutdown_time)
@@ -2217,7 +2234,7 @@ class EnclosurePlugin(octoprint.plugin.StartupPlugin, octoprint.plugin.TemplateP
             for rpi_output in self.rpi_outputs:
                 if rpi_output['shutdown_on_failed']:
                     shutdown_time = rpi_output['shutdown_time']
-                    if rpi_output['output_type'] == 'pwm' and rpi_output['pwm_temperature_linked']:
+                    if rpi_output['output_type'] in ('pwm', 'pwm_pigpio') and rpi_output['pwm_temperature_linked']:
                         rpi_output['duty_cycle'] = rpi_output['default_duty_cycle']
                     if rpi_output['auto_shutdown'] and not self.is_hour(shutdown_time):
                         delay_seconds = self.to_float(shutdown_time)
@@ -2264,10 +2281,10 @@ class EnclosurePlugin(octoprint.plugin.StartupPlugin, octoprint.plugin.TemplateP
             self.add_regular_output_to_queue(shutdown_delay_seconds, rpi_output, value, sufix)
         if rpi_output['output_type'] == 'ledstrip':
             self.ledstrip_set_rgb(rpi_output)
-        if rpi_output['output_type'] == 'pwm' and not rpi_output['pwm_temperature_linked']:
+        if rpi_output['output_type'] in ('pwm', 'pwm_pigpio') and not rpi_output['pwm_temperature_linked']:
             value = 0
             self.add_pwm_output_to_queue(shutdown_delay_seconds, rpi_output, value, sufix)
-        if rpi_output['output_type'] == 'pwm' and rpi_output['pwm_temperature_linked']:
+        if rpi_output['output_type'] in ('pwm', 'pwm_pigpio') and rpi_output['pwm_temperature_linked']:
             self.schedule_pwm_duty_on_queue(shutdown_delay_seconds, rpi_output, 0, sufix)
         if (rpi_output['output_type'] == 'neopixel_indirect' or rpi_output['output_type'] == 'neopixel_direct'):
             self.add_neopixel_output_to_queue(rpi_output, shutdown_delay_seconds, 0, 0, 0, sufix)
@@ -2301,7 +2318,7 @@ class EnclosurePlugin(octoprint.plugin.StartupPlugin, octoprint.plugin.TemplateP
                         self.write_gpio(gpio, value)
                 if rpi_output['output_type'] == 'ledstrip':
                     self.ledstrip_set_rgb(rpi_output)
-                if rpi_output['output_type'] == 'pwm' and not rpi_output['pwm_temperature_linked']:
+                if rpi_output['output_type'] in ('pwm', 'pwm_pigpio') and not rpi_output['pwm_temperature_linked']:
                     value = self.to_int(rpi_output['default_duty_cycle'])
                     self.write_pwm(gpio, value)
                 if (rpi_output['output_type'] == 'neopixel_indirect' or rpi_output['output_type'] == 'neopixel_direct'):
@@ -2323,7 +2340,7 @@ class EnclosurePlugin(octoprint.plugin.StartupPlugin, octoprint.plugin.TemplateP
             self.add_regular_output_to_queue(delay_seconds, rpi_output, value, sufix)
         if rpi_output['output_type'] == 'ledstrip':
             self.ledstrip_set_rgb(rpi_output)
-        if rpi_output['output_type'] == 'pwm' and not rpi_output['pwm_temperature_linked']:
+        if rpi_output['output_type'] in ('pwm', 'pwm_pigpio') and not rpi_output['pwm_temperature_linked']:
             value = self.to_int(rpi_output['default_duty_cycle'])
             self.add_pwm_output_to_queue(delay_seconds, rpi_output, value, sufix)
         if (rpi_output['output_type'] == 'neopixel_indirect' or rpi_output['output_type'] == 'neopixel_direct'):
@@ -2527,7 +2544,7 @@ class EnclosurePlugin(octoprint.plugin.StartupPlugin, octoprint.plugin.TemplateP
                         self.write_gpio(self.to_int(output['gpio_pin']), value)
                     comm_instance._log("Setting REGULAR output %s to value %s" % (index_id, value))
                     return
-                if output['output_type'] == 'pwm':
+                if output['output_type'] in ('pwm', 'pwm_pigpio'):
                     set_value = self.to_int(self.get_gcode_value(cmd, 'S'))
                     set_value = self.constrain(set_value, 0, 100)
                     output['duty_cycle'] = set_value
@@ -2576,7 +2593,7 @@ class EnclosurePlugin(octoprint.plugin.StartupPlugin, octoprint.plugin.TemplateP
 
 __plugin_name__ = "Enclosure Plugin"
 __plugin_pythoncompat__ = ">=2.7,<4"
-__plugin_version__ = "5.0.0"
+__plugin_version__ = "5.0.1"
 
 
 def __plugin_load__():

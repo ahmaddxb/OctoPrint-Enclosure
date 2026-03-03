@@ -23,6 +23,11 @@
           <input type="radio" value="pwm" data-bind="checked: output_type, attr: {name: 'output_type_' + $index() }"> {{ _('PWM') }}
         </label>
       </div>
+      <div class="controls">
+        <label class="radio">
+          <input type="radio" value="pwm_pigpio" data-bind="checked: output_type, attr: {name: 'output_type_' + $index() }"> {{ _('PWM (Hardware)') }}
+        </label>
+      </div>
        <div class="controls">
         <label class="radio">
           <input type="radio" value="emc" data-bind="checked: output_type, attr: {name: 'output_type_' + $index() }"> {{ _('EMC 2101') }}
@@ -115,7 +120,7 @@
     </div>
     <!-- /ko -->
 
-    <!-- ko if: (($data.output_type() == "pwm" ) || ($data.output_type() == "emc" )) -->
+    <!-- ko if: (($data.output_type() == "pwm" ) || ($data.output_type() == "pwm_pigpio" ) || ($data.output_type() == "emc" )) -->
     <div class="control-group">
       <div class="controls">
         <label class="checkbox">
@@ -129,7 +134,7 @@
     </div>
     <!-- /ko -->
 
-    <!-- ko if: (($data.output_type() == "pwm" || $data.output_type() == "emc") && $data.pwm_temperature_linked()) -->
+    <!-- ko if: (($data.output_type() == "pwm" || $data.output_type() == "pwm_pigpio" || $data.output_type() == "emc") && $data.pwm_temperature_linked()) -->
     <div class="control-group">
       <label class="control-label">{{ _('Duty A') }}</label>
       <div class="controls">
@@ -156,7 +161,7 @@
     </div>
     <!-- /ko -->
 
-    <!-- ko if: ($data.output_type() == "regular" || ($data.output_type() == "pwm" && !$data.pwm_temperature_linked()) ) -->
+    <!-- ko if: ($data.output_type() == "regular" || (($data.output_type() == "pwm" || $data.output_type() == "pwm_pigpio") && !$data.pwm_temperature_linked()) ) -->
     <div class="control-group">
       <div class="controls">
         <label class="checkbox">
@@ -186,9 +191,9 @@
     <!-- /ko -->
 
 
-    <!-- ko ifnot: (($data.output_type() == "regular" || $data.output_type() == "pwm") &&  $data.toggle_timer()) -->
+    <!-- ko ifnot: (($data.output_type() == "regular" || $data.output_type() == "pwm" || $data.output_type() == "pwm_pigpio") &&  $data.toggle_timer()) -->
     <!-- ko ifnot: ($data.output_type() == "gcode_output" || $data.output_type() == "temperature_alarm" || $data.output_type() == "shell_output") -->
-    <!-- ko ifnot: ($data.output_type() == "pwm" && $data.pwm_temperature_linked()) -->
+    <!-- ko ifnot: (($data.output_type() == "pwm" || $data.output_type() == "pwm_pigpio") && $data.pwm_temperature_linked()) -->
     <!-- ko ifnot: ($data.output_type() == "emc") -->
     <div class="control-group">
       <div class="controls">
@@ -365,8 +370,8 @@
     <!-- /ko -->
 
 
-    <!-- ko if: ($data.output_type() == "temperature_alarm" || $data.output_type() == "temp_hum_control" || ($data.output_type() == "pwm" && $data.pwm_temperature_linked()))  -->
-    <!-- ko if: ($data.temp_ctr_type() == "heater" || $data.temp_ctr_type() == "cooler" || ($data.output_type() == "pwm" && $data.pwm_temperature_linked()))  -->
+    <!-- ko if: ($data.output_type() == "temperature_alarm" || $data.output_type() == "temp_hum_control" || (($data.output_type() == "pwm" || $data.output_type() == "pwm_pigpio") && $data.pwm_temperature_linked()))  -->
+    <!-- ko if: ($data.temp_ctr_type() == "heater" || $data.temp_ctr_type() == "cooler" || (($data.output_type() == "pwm" || $data.output_type() == "pwm_pigpio") && $data.pwm_temperature_linked()))  -->
     <div class="control-group">
       <label class="control-label">Temperature Sensor</label>
       <div class="controls">
@@ -466,7 +471,7 @@
       </div>
     </div>
     <!-- /ko -->
-    <!-- ko if: ($data.output_type() == "pwm")  -->
+    <!-- ko if: ($data.output_type() == "pwm" || $data.output_type() == "pwm_pigpio")  -->
     <div class="control-group">
       <label class="control-label">{{ _('PWM Frequency') }}</label>
       <div class="controls">

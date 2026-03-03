@@ -193,10 +193,10 @@
 </div>
 <!-- /ko -->
 
-<!-- ko if: ($data.output_type() == "pwm")  -->
+<!-- ko if: ($data.output_type() == "pwm" || $data.output_type() == "pwm_pigpio")  -->
 <h4>
     <span data-bind="html: label"> </span>
-    <span class="badge">pwm</span>
+    <span class="badge" data-bind="text: output_type() == 'pwm_pigpio' ? 'pwm hw' : 'pwm'"></span>
 </h4>
 <div class="input-append">
     <input type="text" class="input-mini" data-bind="value: new_duty_cycle, valueUpdate: 'input', attr: {placeholder:$root.getDutyCycle(duty_cycle())}">
@@ -248,8 +248,8 @@
 </h4>
 <!-- /ko -->
 
-<!-- ko ifnot: ($data.output_type() == "pwm" && $data.pwm_temperature_linked()) -->
-<!-- ko ifnot: (($data.output_type() == "regular" || $data.output_type() == "pwm") &&  $data.toggle_timer()) -->
+<!-- ko ifnot: (($data.output_type() == "pwm" || $data.output_type() == "pwm_pigpio") && $data.pwm_temperature_linked()) -->
+<!-- ko ifnot: (($data.output_type() == "regular" || $data.output_type() == "pwm" || $data.output_type() == "pwm_pigpio") &&  $data.toggle_timer()) -->
 <!-- ko ifnot: ($data.output_type() == "gcode_output" || $data.output_type() == "temperature_alarm" || $data.output_type() == "shell_output") -->
 <div>
     <h5>
@@ -287,7 +287,7 @@
 <!-- /ko -->
 <!-- /ko -->
 
-<!-- ko if: (($data.output_type() == "regular" || $data.output_type() == "pwm") &&  $data.toggle_timer()) -->
+<!-- ko if: (($data.output_type() == "regular" || $data.output_type() == "pwm" || $data.output_type() == "pwm_pigpio") &&  $data.toggle_timer()) -->
 <h5>
     <span>Time Toggle</span>
     <span class="badge"> active</span>
