@@ -25,7 +25,6 @@ import copy
 from smbus2 import SMBus
 from .getPiTemp import PiTemp
 import struct
-import threading
 import os
 
 active_gpiod_monitors = {}
@@ -2603,7 +2602,7 @@ class EnclosurePlugin(octoprint.plugin.StartupPlugin, octoprint.plugin.TemplateP
 
 __plugin_name__ = "Enclosure Plugin"
 __plugin_pythoncompat__ = ">=2.7,<4"
-__plugin_version__ = "5.0.3"
+__plugin_version__ = "5.0.4"
 
 
 def __plugin_load__():
