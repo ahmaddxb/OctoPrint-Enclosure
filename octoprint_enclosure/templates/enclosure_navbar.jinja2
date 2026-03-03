@@ -4,7 +4,7 @@
     <b class="caret"></b>
 </a>
 <ul class="dropdown-menu" data-bind="foreach: $root.rpi_outputs()">
-    <!-- ko if: ($data.show_on_navbar())  -->
+    <!-- ko if: (typeof $data.show_on_navbar === 'function' && $data.show_on_navbar())  -->
 
     <!-- ko if: ($data.output_type() == "regular")  -->
     <li>
@@ -39,24 +39,31 @@
     <!-- /ko -->
     <!-- /ko -->
 
+    <!-- ko if: ($data.output_type() == "shell_output")  -->
+    <li>
+        <a href="javascript:void(0)" data-bind="click: $root.handleShellOutput">
+            <span data-bind="html: label"> </span>
+            <span class="badge badge-info">shell</span>
+        </a>
+    </li>
     <!-- /ko -->
-    
+
     <!-- ko if: ($data.output_type() == "pwm" || $data.output_type() == "pwm_pigpio")  -->
     <li>
         <a href="javascript:void(0)" data-bind="click: $root.handlePWMNavbar">
             <span data-bind="html: label"> </span>
-            <!-- ko if: (parseInt($data.duty_cycle()) > 0)  -->
+            <!-- ko if: (typeof $data.duty_cycle === 'function' && parseInt($data.duty_cycle()) > 0)  -->
             <span class="badge badge-success help-inline" data-bind="text: $data.duty_cycle() + '%'"></span>
             <!-- /ko -->
-            <!-- ko ifnot: (parseInt($data.duty_cycle()) > 0)  -->
+            <!-- ko ifnot: (typeof $data.duty_cycle === 'function' && parseInt($data.duty_cycle()) > 0)  -->
             <span class="badge badge-important help-inline">off</span>
             <!-- /ko -->
         </a>
     </li>
     <!-- /ko -->
 
-
     <!-- /ko -->
+
 
 </ul>
 <!-- /ko -->

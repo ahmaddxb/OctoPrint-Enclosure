@@ -104,9 +104,12 @@ $(function () {
     };
 
     self.hasAnyNavbarOutput = function(){
-      return_value = false;
+      var return_value = false;
       self.rpi_outputs().forEach(function (output) {
-        if ((output.output_type()=="regular" || output.output_type()=="gcode_output" || output.output_type()=="pwm" || output.output_type()=="pwm_pigpio") && output.show_on_navbar()) {
+        var show = (typeof output.show_on_navbar === "function") ? output.show_on_navbar() : false;
+        var type = (typeof output.output_type === "function") ? output.output_type() : "";
+
+        if (show && ["regular", "gcode_output", "shell_output", "pwm", "pwm_pigpio"].indexOf(type) !== -1) {
           return_value = true;
           return false;
         }
@@ -115,9 +118,10 @@ $(function () {
     };
 
     self.hasAnyNavbarTemperature = function(){
-      return_value = false;
+      var return_value = false;
       self.rpi_inputs_temperature_sensors().forEach(function (sensor) {
-        if (sensor.temp_sensor_navbar()) {
+        var navbar = (typeof sensor.temp_sensor_navbar === "function") ? sensor.temp_sensor_navbar() : false;
+        if (navbar) {
           return_value = true;
           return false;
         }
