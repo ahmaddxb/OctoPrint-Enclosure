@@ -29,7 +29,8 @@ Also, be aware that upgrading from versions lower than 4.00 will **DELETE** all 
 Here is a list of possibilities:
 * Add temperature sensors on your enclosure or near your printer
 * Add active heaters on your enclosure and keep the temperature nice and high for large ABS 
-* PWM controlled outputs
+* Software PWM controlled outputs
+* Hardware PWM controlled outputs for precise, jitter-free signal generation (**NEW**)
 * PWM controlled outputs based on temperature sensor
 * Active cooling for good PLA printing
 * Schedule GPIO's to turn on and off with a fixed period of time during printing.
@@ -40,6 +41,7 @@ Here is a list of possibilities:
 * Alarm when enclosure temperature reaches some sort of value
 * Notifications using IFTTT when events happen (temperature trigger / print events / etc)
 * Add sub-menus on navbar to quick access outputs and temperature sensors
+* Full support for modern Raspberry Pi Linux kernels like Bookworm (**NEW**)
 
 Check pictures on thingiverse: http://www.thingiverse.com/thing:2245493
 
