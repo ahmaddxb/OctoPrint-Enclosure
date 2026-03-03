@@ -13,9 +13,11 @@ This repository is a modern fork of the original OctoPrint-Enclosure plugin. It 
 > ⚠️ **COMPATIBILITY NOTICE:** This fork relies on modern Linux interfaces like `gpiod` that are not available or default on older systems. Therefore, this fork is **not backwards compatible**. It strictly requires **OctoPi 1.0.0+ (Debian Bookworm)** or a similarly modern OS to run. If you are on an older OS (like Debian Buster or Bullseye), please stick to the original plugin.
 
 * **Replaced `RPi.GPIO` with `gpiod`**: Solves "Device or Resource Busy" errors and lockups on modern kernels.
-* **Hardware PWM Support**: Added a new output type for "PWM (Hardware)" utilizing the `pigpio` daemon (`pigpiod` must be running).
+* **Hardware PWM Support**: Added "PWM (Hardware)" using the `pigpio` daemon. The plugin now attempts to **automatically start `pigpiod`** if it isn't running.
+* **PWM UI Enhancements**: Added **Quick ON (100%)** and **OFF (0%)** buttons to the Enclosure tab for all PWM outputs for faster control.
+* **Physical PWM Buttons**: Physical GPIO input buttons can now be mapped to control PWM outputs (Toggle between 0/100%, or set High/Low).
 * **Robust Software PWM**: Upgraded standard PWM to use `gpiozero` and `rpi-lgpio` with graceful fallbacks for unsupported frequencies.
-* **Bug Fixes**: Resolved UnboundLocalErrors in the EMC2101 fan logic by fixing scope variables.
+* **Bug Fixes**: Resolved UnboundLocalErrors in the EMC2101 fan logic and cleaned up duplicate threading imports.
 * **Log Polish**: Dropped idle connection errors to the debug level to prevent log file spam when the printer is disconnected.
 
 # Before opening an issue...
@@ -38,7 +40,7 @@ Here is a list of possibilities:
 * Schedule GPIO's to turn on and off with a fixed period of time during printing.
 * Mechanical buttons to pause and resume printer jobs
 * Mechanical buttons to send GCODE to the printer
-* Mechanical buttons to control raspberry pi GPIO
+* Mechanical buttons to control raspberry pi GPIO (including PWM output toggle) (**NEW**)
 * Multiple filament sensors for dual or more extruders
 * Alarm when enclosure temperature reaches some sort of value
 * Notifications using IFTTT when events happen (temperature trigger / print events / etc)
