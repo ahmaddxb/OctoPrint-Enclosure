@@ -4,6 +4,16 @@ Find the plugin useful? Buy me a coffee
 # THIS PLUGIN IS DEPRACATED! 
 I'm moving away from it, and when ready the replacement plugin would be here: https://github.com/vitormhenrique/OctoPrint-Enclosure-V2
 
+## ahmaddxb Fork Updates
+
+This repository is a modern fork of the original OctoPrint-Enclosure plugin. It includes several key improvements to support newer Raspberry Pi environments and Linux kernels (like Bookworm):
+
+* **Replaced `RPi.GPIO` with `gpiod`**: Solves "Device or Resource Busy" errors and lockups on modern kernels.
+* **Hardware PWM Support**: Added a new output type for "PWM (Hardware)" utilizing the `pigpio` daemon (`pigpiod` must be running).
+* **Robust Software PWM**: Upgraded standard PWM to use `gpiozero` and `rpi-lgpio` with graceful fallbacks for unsupported frequencies.
+* **Bug Fixes**: Resolved UnboundLocalErrors in the EMC2101 fan logic by fixing scope variables.
+* **Log Polish**: Dropped idle connection errors to the debug level to prevent log file spam when the printer is disconnected.
+
 # Before opening an issue...
 
 Check the [troubleshooting guide](https://github.com/vitormhenrique/OctoPrint-Enclosure/wiki/Troubleshooting-Guide). Issues with no log, no print screen *will be closed* until the necessary documentation is available.
