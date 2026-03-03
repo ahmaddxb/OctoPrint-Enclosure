@@ -204,6 +204,8 @@
     <button class="btn btn-input-inc" title="Set PWM" data-bind="enable: $root.isUser(), click: $root.handlePWM">
         <i class="fa fa-check"></i>
     </button>
+    <button class="btn btn-input-inc" title="Turn On (100%)" data-bind="enable: $root.isUser(), click: function(data) { data.new_duty_cycle(100); $root.handlePWM(data); }">On</button>
+    <button class="btn btn-input-inc" title="Turn Off (0%)" data-bind="enable: $root.isUser(), click: function(data) { data.new_duty_cycle(0); $root.handlePWM(data); }">Off</button>
     <!-- /ko -->
     <!-- ko if: ($data.pwm_temperature_linked())  -->
     <button class="btn btn-input-inc" title="Temperature controlled PWM" disabled>
