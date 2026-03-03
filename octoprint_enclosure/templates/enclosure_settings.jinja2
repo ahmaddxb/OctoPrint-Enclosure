@@ -480,7 +480,7 @@
         <span class="help-inline">Value is in Hz (Maximum 8000 Hz) The Ideal limit is between 100 Hz and 2000 Hz. For PC case fans, LED strips, or heaters, anything above 100 Hz is entirely flicker-free</span>
         <!-- /ko -->
         <!-- ko if: ($data.output_type() == "pwm_pigpio") -->
-        <span class="help-inline">Value is in Hz. Hardware PWM provides highly precise, jitter-free signal generation independent of CPU load, unlike software PWM. It requires the pigpiod daemon to be running.</span>
+        <span class="help-inline">Value is in Hz. Hardware PWM provides highly precise, jitter-free signal generation. Range is 1 Hz to 30 MHz. Recommendation: 25000 Hz for PC fans, 1000 - 8000 Hz for LED strips (flicker-free). Note: requires the pigpiod daemon to be running.</span>
         <!-- /ko -->
       </div>
     </div>
