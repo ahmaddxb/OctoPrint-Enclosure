@@ -213,7 +213,7 @@ def CheckInputActiveLow(Input_Pull_Resistor):
     else:
         return False
 
-class EnclosurePlugin(octoprint.plugin.StartupPlugin, octoprint.plugin.TemplatePlugin, octoprint.plugin.SettingsPlugin,
+class EnclosurePlugin(octoprint.plugin.StartupPlugin, octoprint.plugin.ShutdownPlugin, octoprint.plugin.TemplatePlugin, octoprint.plugin.SettingsPlugin,
                       octoprint.plugin.AssetPlugin, octoprint.plugin.BlueprintPlugin,
                       octoprint.plugin.EventHandlerPlugin):
     rpi_outputs = []
@@ -343,6 +343,17 @@ class EnclosurePlugin(octoprint.plugin.StartupPlugin, octoprint.plugin.TemplateP
         self.start_timer()
         self.print_complete = False
         self._logger.info("[DEBUG STARTUP] === on_after_startup() END ===")
+
+    def on_shutdown(self):
+        self._logger.info("OctoPrint shutting down - turning off PWM outputs and clearing channels...")
+        for pwm_instance in list(self.pwm_instances):
+            for pin in list(pwm_instance.keys()):
+                if pin == 'duty_cycle': continue
+                try:
+                    pwm_instance[pin].stop()
+                except Exception as ex:
+                    self._logger.warning("Error stopping PWM instance on pin %s during shutdown: %s", pin, ex)
+        self.pwm_instances = []
 
     def get_settings_version(self):
         return 10
@@ -1864,17 +1875,25 @@ class EnclosurePlugin(octoprint.plugin.StartupPlugin, octoprint.plugin.TemplateP
                 pin = self.to_int(gpio_out_pwm['gpio_pin'])
                 self._logger.info("Setting GPIO pin %s as PWM", pin)
                 
-                # Stop and clear any other pwm instances on that pin
-                pwm_instances_to_remove = []
-                for pwm_instance in self.pwm_instances:
-                    if pin in pwm_instance and pwm_instance[pin]:
-                        try:
-                            pwm_instance[pin].stop()
-                        except:
-                            pass
-                        pwm_instances_to_remove.append(pwm_instance)
-                for pwm_instance in pwm_instances_to_remove:
-                    self.pwm_instances.remove(pwm_instance)
+                # Check if this PWM pin is already running and hasn't changed config
+                existing_instance = None
+                for pwm_inst in self.pwm_instances:
+                    if pin in pwm_inst and pwm_inst[pin]:
+                        existing_instance = pwm_inst
+                        break
+
+                if pin in self.rpi_outputs_not_changed and existing_instance:
+                    self._logger.info("PWM pin %s unchanged and already running, skipping re-initialization", pin)
+                    continue
+
+                # Stop and clear old pwm instance on that pin if config changed
+                if existing_instance:
+                    try:
+                        existing_instance[pin].stop()
+                    except:
+                        pass
+                    if existing_instance in self.pwm_instances:
+                        self.pwm_instances.remove(existing_instance)
                 
                 # Clear the pin
                 self.clear_channel(pin)
@@ -2501,6 +2520,8 @@ class EnclosurePlugin(octoprint.plugin.StartupPlugin, octoprint.plugin.TemplateP
             else:
                 if rpi_output['output_type'] == 'regular' and not rpi_output.get('gpio_status'):
                     rpi_output['gpio_status'] = False
+                if rpi_output['output_type'] in ('pwm', 'pwm_pigpio') and not rpi_output.get('pwm_temperature_linked'):
+                    rpi_output['duty_cycle'] = 0
 
     def schedule_auto_startup_outputs(self, rpi_output, delay_seconds):
         sufix = 'auto_startup'
