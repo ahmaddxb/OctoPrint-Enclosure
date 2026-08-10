@@ -4,3 +4,5 @@ venv
 *.pyc
 .agents/
 builds/
+DEVELOPMENT_NOTES.md
+
