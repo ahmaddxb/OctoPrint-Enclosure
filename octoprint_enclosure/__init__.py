@@ -894,8 +894,7 @@ class EnclosurePlugin(octoprint.plugin.StartupPlugin, octoprint.plugin.ShutdownP
             rpi_output['new_duty_cycle'] = ""
             gpio = self.to_int(rpi_output['gpio_pin'])
             self.write_pwm(gpio, set_value)
-        self._settings.set(["rpi_outputs"], self.rpi_outputs)
-        self._settings.save()
+        self.save_rpi_outputs_settings()
         return jsonify(success=True, index_id=index_id, duty_cycle=set_value)
 
     @octoprint.plugin.BlueprintPlugin.route("/sendGcodeCommand", methods=["GET"])
@@ -2299,6 +2298,20 @@ class EnclosurePlugin(octoprint.plugin.StartupPlugin, octoprint.plugin.ShutdownP
             self._logger.warn(message)
             pass
 
+    def save_rpi_outputs_settings(self):
+        try:
+            persistent_outputs = copy.deepcopy(self.rpi_outputs)
+            for p_out in persistent_outputs:
+                if p_out.get('output_type') in ('pwm', 'pwm_pigpio'):
+                    if not p_out.get('startup_with_server'):
+                        p_out['duty_cycle'] = 0
+                    else:
+                        p_out['duty_cycle'] = self.to_int(p_out.get('default_duty_cycle', 0))
+            self._settings.set(["rpi_outputs"], persistent_outputs)
+            self._settings.save()
+        except Exception as ex:
+            self.log_error(ex)
+
     def write_pwm(self, gpio, pwm_value, queue_id=None):
         try:
             gpio = self.to_int(gpio)
@@ -2314,7 +2327,7 @@ class EnclosurePlugin(octoprint.plugin.StartupPlugin, octoprint.plugin.ShutdownP
                     for rpi_output in self.rpi_outputs:
                         if rpi_output['output_type'] in ('pwm', 'pwm_pigpio') and self.to_int(rpi_output['gpio_pin']) == gpio:
                             rpi_output['duty_cycle'] = pwm_value
-                    self._settings.set(["rpi_outputs"], self.rpi_outputs)
+                    self.save_rpi_outputs_settings()
                     self.update_ui()
                     if queue_id is not None:
                         self.stop_queue_item(queue_id)
