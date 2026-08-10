@@ -301,6 +301,7 @@ $(function () {
 
     self.onBeforeBinding = function () {
       self.bindFromSettings();
+      self.getUpdateUI();
     };
 
     self.onSettingsBeforeSave = function() {
@@ -309,6 +310,7 @@ $(function () {
 
     self.onStartupComplete = function () {
       self.settingsOpen = false;
+      self.getUpdateUI();
     };
 
     self.onSettingsShown = function () {

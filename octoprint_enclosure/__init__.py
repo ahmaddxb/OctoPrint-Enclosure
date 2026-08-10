@@ -147,12 +147,20 @@ def get_gpio_input(pin):
     return 0
 
 
+def is_active_low(val):
+    if isinstance(val, dict):
+        val = val.get('active_low', True)
+    if isinstance(val, str):
+        return val.lower() in ('true', '1', 'yes')
+    return bool(val)
+
 #Function that returns Boolean output state of the GPIO inputs / outputs
 def PinState_Boolean(pin, ActiveLow) :
     try:
+        active_low = is_active_low(ActiveLow)
         state = get_gpio_input(pin)
-        if ActiveLow and not state: return True
-        if not ActiveLow and state: return True
+        if active_low and not state: return True
+        if not active_low and state: return True
         return False
     except:
         return "ERROR: Unable to read pin"
@@ -494,7 +502,7 @@ class EnclosurePlugin(octoprint.plugin.StartupPlugin, octoprint.plugin.TemplateP
 
         for rpi_output in self.rpi_outputs:
             if identifier == self.to_int(rpi_output['index_id']):
-                val = (not value) if rpi_output['active_low'] else value
+                val = (not value) if is_active_low(rpi_output) else value
                 if rpi_output['gpio_i2c_enabled']:
                     self.gpio_i2c_write(rpi_output, val)
                 else:
@@ -747,7 +755,7 @@ class EnclosurePlugin(octoprint.plugin.StartupPlugin, octoprint.plugin.TemplateP
         value = True if request.values["status"] == 'true' else False
         for rpi_output in self.rpi_outputs:
             if self.to_int(index) == self.to_int(rpi_output['index_id']):
-                val = (not value) if rpi_output['active_low'] else value
+                val = (not value) if is_active_low(rpi_output) else value
                 if rpi_output['gpio_i2c_enabled']:
                     self.gpio_i2c_write(rpi_output, val)
                 else:
@@ -2145,7 +2153,20 @@ class EnclosurePlugin(octoprint.plugin.StartupPlugin, octoprint.plugin.TemplateP
             active_gpiod_output_values[gpio] = 1 if val_bool else 0
             self._logger.debug("----------- write_gpio() invoked for pin %s, turning to %s -----------", gpio, val_bool)
             import gpiod
-            if gpio not in active_gpiod_outputs:
+            set_success = False
+            if gpio in active_gpiod_outputs:
+                try:
+                    active_gpiod_outputs[gpio].set_value(gpio, gpiod.line.Value.ACTIVE if val_bool else gpiod.line.Value.INACTIVE)
+                    set_success = True
+                except Exception as ex:
+                    self._logger.warning("set_value failed on pin %s, re-requesting line: %s", gpio, ex)
+                    try:
+                        active_gpiod_outputs[gpio].release()
+                    except:
+                        pass
+                    active_gpiod_outputs.pop(gpio, None)
+
+            if not set_success and gpio not in active_gpiod_outputs:
                 chip_path = '/dev/gpiochip4' if os.path.exists('/dev/gpiochip4') else '/dev/gpiochip0'
                 self._logger.debug("Initializing new libgpiod output line %s on %s", gpio, chip_path)
                 req = gpiod.request_lines(
@@ -2157,13 +2178,10 @@ class EnclosurePlugin(octoprint.plugin.StartupPlugin, octoprint.plugin.TemplateP
                     )}
                 )
                 active_gpiod_outputs[gpio] = req
-            else:
-                self._logger.debug("Modifying existing libgpiod line %s to %s", gpio, val_bool)
-                active_gpiod_outputs[gpio].set_value(gpio, gpiod.line.Value.ACTIVE if val_bool else gpiod.line.Value.INACTIVE)
 
             if queue_id is not None:
                 self._logger.debug("Running scheduled queue id %s", queue_id)
-            self._logger.debug("Writing on GPIO: %s value %s", gpio, value)
+            self._logger.debug("Writing on GPIO: %s value %s", gpio, val_bool)
             self.update_ui()
             if queue_id is not None:
                 self.stop_queue_item(queue_id)
