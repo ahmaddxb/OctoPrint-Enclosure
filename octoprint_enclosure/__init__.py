@@ -66,7 +66,7 @@ class GpiodMonitor:
                 return 1 if val == gpiod.line.Value.ACTIVE else 0
             except:
                 pass
-        return 0
+        return 1 if self.pull_resistor_str == 'input_pull_up' else 0
 
     def _monitor_loop(self):
         import gpiod
@@ -87,6 +87,7 @@ class GpiodMonitor:
         else:
             bias = Bias.DISABLED
 
+        start_time = time.time()
         chip_path = self._get_chip_path()
         try:
             line_settings = gpiod.LineSettings(
@@ -104,9 +105,30 @@ class GpiodMonitor:
                 while not self.stop_event.is_set():
                     if request.wait_edge_events(timedelta(milliseconds=500)):
                         for event in request.read_edge_events():
+                            if time.time() - start_time < 1.5:
+                                self.logger.info("Ignoring initial startup edge artifact on pin %s", self.pin)
+                                continue
                             self.callback(self.pin)
         except Exception as e:
             self.logger.error("Failed to start gpiod monitor on pin %s: %s", self.pin, e)
+
+def is_output_pin(pin):
+    try:
+        pin = int(pin)
+        import octoprint_enclosure
+        impl = getattr(octoprint_enclosure, '__plugin_implementation__', None)
+        if impl and hasattr(impl, 'rpi_outputs') and impl.rpi_outputs:
+            for o in impl.rpi_outputs:
+                if 'gpio_pin' in o and o['gpio_pin'] != '':
+                    try:
+                        if int(o['gpio_pin']) == pin:
+                            return True, is_active_low(o)
+                    except (ValueError, TypeError):
+                        pass
+    except:
+        pass
+    return False, True
+
 
 def get_gpio_input(pin):
     try:
@@ -115,22 +137,24 @@ def get_gpio_input(pin):
         return 0
 
     if pin in active_gpiod_monitors:
-        return active_gpiod_monitors[pin].get_value()
+        res = active_gpiod_monitors[pin].get_value()
+        if hasattr(__plugin_implementation__, '_logger'):
+            __plugin_implementation__._logger.info("[DEBUG get_gpio_input] Pin %s in active_gpiod_monitors -> %s", pin, res)
+        return res
 
     if pin in active_gpiod_outputs or pin in active_gpiod_output_values:
-        return active_gpiod_output_values.get(pin, 0)
+        res = active_gpiod_output_values.get(pin, 0)
+        if hasattr(__plugin_implementation__, '_logger'):
+            __plugin_implementation__._logger.info("[DEBUG get_gpio_input] Pin %s in active_gpiod_outputs/values -> %s", pin, res)
+        return res
 
-    try:
-        if hasattr(__plugin_implementation__, 'rpi_outputs') and __plugin_implementation__.rpi_outputs:
-            for o in __plugin_implementation__.rpi_outputs:
-                if 'gpio_pin' in o and o['gpio_pin'] != '':
-                    try:
-                        if int(o['gpio_pin']) == pin:
-                            return active_gpiod_output_values.get(pin, 0)
-                    except (ValueError, TypeError):
-                        pass
-    except:
-        pass
+    is_out, active_low = is_output_pin(pin)
+    if is_out:
+        default_val = 1 if active_low else 0
+        res = active_gpiod_output_values.get(pin, default_val)
+        if hasattr(__plugin_implementation__, '_logger'):
+            __plugin_implementation__._logger.info("[DEBUG get_gpio_input] Pin %s is output pin (active_low=%s) -> %s", pin, active_low, res)
+        return res
 
     try:
         import gpiod
@@ -141,8 +165,13 @@ def get_gpio_input(pin):
             config={pin: gpiod.LineSettings(direction=gpiod.line.Direction.INPUT)}
         ) as request:
             val = request.get_value(pin)
-            return 1 if val == gpiod.line.Value.ACTIVE else 0
-    except:
+            res = 1 if val == gpiod.line.Value.ACTIVE else 0
+            if hasattr(__plugin_implementation__, '_logger'):
+                __plugin_implementation__._logger.info("[DEBUG get_gpio_input] Pin %s read gpiod input -> %s", pin, res)
+            return res
+    except Exception as ex:
+        if hasattr(__plugin_implementation__, '_logger'):
+            __plugin_implementation__._logger.info("[DEBUG get_gpio_input] Pin %s gpiod read failed: %s", pin, ex)
         pass
     return 0
 
@@ -272,6 +301,7 @@ class EnclosurePlugin(octoprint.plugin.StartupPlugin, octoprint.plugin.TemplateP
 
     # ~~ StartupPlugin mixin
     def on_after_startup(self):   
+        self._logger.info("[DEBUG STARTUP] === on_after_startup() START ===")
         helpers = self._plugin_manager.get_helpers("mqtt", "mqtt_publish", "mqtt_subscribe", "mqtt_unsubscribe")
         
         if helpers:
@@ -289,11 +319,30 @@ class EnclosurePlugin(octoprint.plugin.StartupPlugin, octoprint.plugin.TemplateP
         self.generate_temp_hum_control_status()
         self.setup_gpio()
         self.configure_gpio()
-        self.update_ui()
         self.start_outpus_with_server()
         self.handle_initial_gpio_control()
+        
+        self._logger.info("[DEBUG STARTUP] Outputs after setup: %s", self.rpi_outputs)
+        for output in self.rpi_outputs:
+            if output.get('output_type') == 'regular':
+                pin = self.to_int(output['gpio_pin'])
+                active_low = is_active_low(output)
+                raw_pin_state = get_gpio_input(pin)
+                val = raw_pin_state if not active_low else (not raw_pin_state)
+                output['gpio_status'] = bool(val)
+                self._logger.info("[DEBUG STARTUP] Output '%s' (pin %s, active_low=%s): raw_state=%s -> gpio_status=%s",
+                                  output.get('label'), pin, active_low, raw_pin_state, output['gpio_status'])
+            elif output.get('output_type') in ('pwm', 'pwm_pigpio'):
+                self._logger.info("[DEBUG STARTUP] PWM Output '%s' (pin %s): duty_cycle=%s",
+                                  output.get('label'), output.get('gpio_pin'), output.get('duty_cycle'))
+
+        self._settings.set(["rpi_outputs"], self.rpi_outputs)
+        self._settings.save()
+        self._logger.info("[DEBUG STARTUP] Saved _settings to disk. Executing update_ui()")
+        self.update_ui()
         self.start_timer()
         self.print_complete = False
+        self._logger.info("[DEBUG STARTUP] === on_after_startup() END ===")
 
     def get_settings_version(self):
         return 10
@@ -502,11 +551,14 @@ class EnclosurePlugin(octoprint.plugin.StartupPlugin, octoprint.plugin.TemplateP
 
         for rpi_output in self.rpi_outputs:
             if identifier == self.to_int(rpi_output['index_id']):
+                rpi_output['gpio_status'] = value
                 val = (not value) if is_active_low(rpi_output) else value
                 if rpi_output['gpio_i2c_enabled']:
                     self.gpio_i2c_write(rpi_output, val)
                 else:
                     self.write_gpio(self.to_int(rpi_output['gpio_pin']), val)
+        self._settings.set(["rpi_outputs"], self.rpi_outputs)
+        self._settings.save()
         return make_response('', 204)
 
 
@@ -730,6 +782,7 @@ class EnclosurePlugin(octoprint.plugin.StartupPlugin, octoprint.plugin.TemplateP
 
     @octoprint.plugin.BlueprintPlugin.route("/updateUI", methods=["GET"])
     def update_ui_requested_old(self):
+        self._logger.info("[DEBUG API /updateUI] Client requested /updateUI endpoint")
         self.update_ui()
         return jsonify(success=True)
 
@@ -753,14 +806,18 @@ class EnclosurePlugin(octoprint.plugin.StartupPlugin, octoprint.plugin.TemplateP
     def set_io_old(self):
         index = request.values["index_id"]
         value = True if request.values["status"] == 'true' else False
+        self._logger.info("[DEBUG API /setIO] Received request index=%s, status=%s", index, value)
         for rpi_output in self.rpi_outputs:
             if self.to_int(index) == self.to_int(rpi_output['index_id']):
+                rpi_output['gpio_status'] = value
                 val = (not value) if is_active_low(rpi_output) else value
                 if rpi_output['gpio_i2c_enabled']:
                     self.gpio_i2c_write(rpi_output, val)
                 else:
                     self.write_gpio(self.to_int(rpi_output['gpio_pin']), val)
-        return jsonify(success=True)
+        self._settings.set(["rpi_outputs"], self.rpi_outputs)
+        self._settings.save()
+        return jsonify(success=True, index_id=self.to_int(index), status=value)
 
     @octoprint.plugin.BlueprintPlugin.route("/sendShellCommand", methods=["GET"])
     def send_shell_command_old(self):
@@ -820,12 +877,15 @@ class EnclosurePlugin(octoprint.plugin.StartupPlugin, octoprint.plugin.TemplateP
     def set_pwm_old(self):
         set_value = self.to_int(request.values["new_duty_cycle"])
         index_id = self.to_int(request.values["index_id"])
+        self._logger.info("[DEBUG API /setPWM] Received request index_id=%s, new_duty_cycle=%s", index_id, set_value)
         for rpi_output in [item for item in self.rpi_outputs if item['index_id'] == index_id]:
             rpi_output['duty_cycle'] = set_value
             rpi_output['new_duty_cycle'] = ""
             gpio = self.to_int(rpi_output['gpio_pin'])
             self.write_pwm(gpio, set_value)
-        return jsonify(success=True)
+        self._settings.set(["rpi_outputs"], self.rpi_outputs)
+        self._settings.save()
+        return jsonify(success=True, index_id=index_id, duty_cycle=set_value)
 
     @octoprint.plugin.BlueprintPlugin.route("/sendGcodeCommand", methods=["GET"])
     def requested_gcode_command_old(self):
@@ -1095,6 +1155,7 @@ class EnclosurePlugin(octoprint.plugin.StartupPlugin, octoprint.plugin.TemplateP
 
     def update_ui_outputs(self):
         try:
+            self._logger.info("[DEBUG update_ui_outputs] Generating UI outputs status...")
             regular_status = []
             pwm_status = []
             neopixel_status = []
@@ -1109,7 +1170,11 @@ class EnclosurePlugin(octoprint.plugin.StartupPlugin, octoprint.plugin.TemplateP
                     if output['gpio_i2c_enabled']:
                         val = self.gpio_i2c_input(output)
                     else:
-                        val = get_gpio_input(pin) if not output['active_low'] else (not get_gpio_input(pin))
+                        active_low = is_active_low(output)
+                        raw = get_gpio_input(pin)
+                        val = raw if not active_low else (not raw)
+                        self._logger.info("[DEBUG update_ui_outputs] Regular Pin %s: ActiveLow=%s, RawPinState=%s -> ComputedStatus=%s", pin, active_low, raw, val)
+                    output['gpio_status'] = bool(val)
                     regular_status.append(
                         dict(index_id=index, status=val, auto_startup=startup, auto_shutdown=shutdown))
                 if output['output_type'] == 'temp_hum_control':
@@ -1131,8 +1196,10 @@ class EnclosurePlugin(octoprint.plugin.StartupPlugin, octoprint.plugin.TemplateP
                                 val = self.to_int(pwm_val)
                             else:
                                 val = 0
+                            self._logger.info("[DEBUG update_ui_outputs] PWM Pin %s: DutyCycle=%s", pin, val)
                             pwm_status.append(
                                 dict(index_id=index, pwm_value=val, auto_startup=startup, auto_shutdown=shutdown))
+            self._logger.info("[DEBUG update_ui_outputs] Broadcasting websocket msg: regular=%s, pwm=%s", regular_status, pwm_status)
             self._plugin_manager.send_plugin_message(self._identifier,
                                                      dict(rpi_output_regular=regular_status, rpi_output_pwm=pwm_status,
                                                           rpi_output_neopixel=neopixel_status,
@@ -1746,11 +1813,10 @@ class EnclosurePlugin(octoprint.plugin.StartupPlugin, octoprint.plugin.TemplateP
                     self.rpi_outputs)):
                 gpio_pin = self.to_int(gpio_out['gpio_pin'])
                 if gpio_pin not in self.rpi_outputs_not_changed:
-                    pass
-                if gpio_pin in active_gpiod_outputs:
-                    active_gpiod_outputs[gpio_pin].release()
-                    active_gpiod_outputs.pop(gpio_pin, None)
-                    active_gpiod_output_values.pop(gpio_pin, None)
+                    if gpio_pin in active_gpiod_outputs:
+                        active_gpiod_outputs[gpio_pin].release()
+                        active_gpiod_outputs.pop(gpio_pin, None)
+                        active_gpiod_output_values.pop(gpio_pin, None)
 
             for gpio_in in list(filter(lambda item: item['input_type'] == 'gpio', self.rpi_inputs)):
                 pingpio = self.to_int(gpio_in['gpio_pin'])
@@ -1784,8 +1850,13 @@ class EnclosurePlugin(octoprint.plugin.StartupPlugin, octoprint.plugin.TemplateP
                     filter(lambda item: (item['output_type'] == 'regular' or item['output_type'] == 'temp_hum_control') and
                             item['gpio_i2c_enabled'] == False,
                            self.rpi_outputs)):
-                initial_value = 1 if gpio_out['active_low'] else 0
+                active_low = is_active_low(gpio_out)
+                initial_value = 1 if active_low else 0
                 pin = self.to_int(gpio_out['gpio_pin'])
+                if pin not in active_gpiod_output_values:
+                    active_gpiod_output_values[pin] = 1 if initial_value else 0
+                    if gpio_out['output_type'] == 'regular':
+                        gpio_out['gpio_status'] = False
                 if pin not in self.rpi_outputs_not_changed:
                     self._logger.info("Setting GPIO pin %s as OUTPUT with initial value: %s", pin, initial_value)
                     self.write_gpio(pin, initial_value)
@@ -1865,12 +1936,23 @@ class EnclosurePlugin(octoprint.plugin.StartupPlugin, octoprint.plugin.TemplateP
                     pwm_instance = None
                 
                 if pwm_instance:
-                    # Start the pwm
-                    self._logger.info("starting PWM on pin %s", pin)
-                    pwm_instance.start(self.to_int(gpio_out_pwm['default_duty_cycle']))
+                    existing_dc = None
+                    for existing_pwm in pwm_instances_to_remove:
+                        if pin in existing_pwm and 'duty_cycle' in existing_pwm:
+                            existing_dc = existing_pwm['duty_cycle']
+                            break
+                    if existing_dc is None:
+                        if gpio_out_pwm.get('startup_with_server'):
+                            existing_dc = self.to_int(gpio_out_pwm.get('default_duty_cycle', 0))
+                        else:
+                            existing_dc = 0
+
+                    gpio_out_pwm['duty_cycle'] = existing_dc
+                    self._logger.info("starting PWM on pin %s with duty cycle %s", pin, existing_dc)
+                    pwm_instance.start(existing_dc)
                     
-                    # Add the pwm to pwm_instances list
-                    self.pwm_instances.append({pin: pwm_instance})
+                    # Add the pwm to pwm_instances list with duty_cycle tracked
+                    self.pwm_instances.append({pin: pwm_instance, 'duty_cycle': existing_dc})
             for gpio_out_neopixel in list(
                     filter(lambda item: item['output_type'] == 'neopixel_direct', self.rpi_outputs)):
                 pin = self.to_int(gpio_out_neopixel['gpio_pin'])
@@ -1989,6 +2071,8 @@ class EnclosurePlugin(octoprint.plugin.StartupPlugin, octoprint.plugin.TemplateP
             for rpi_input in list(
                     filter(lambda item: item['input_type'] == 'gpio' and item['action_type'] == 'output_control',
                            self.rpi_inputs)):
+                if rpi_input.get('controlled_io_set_value') == 'toggle':
+                    continue
                 gpio_pin = self.to_int(rpi_input['gpio_pin'])
                 controlled_io = self.to_int(rpi_input['controlled_io'])
                 if (rpi_input['edge'] == 'fall') ^ bool(get_gpio_input(gpio_pin)):
@@ -2179,6 +2263,13 @@ class EnclosurePlugin(octoprint.plugin.StartupPlugin, octoprint.plugin.TemplateP
                 )
                 active_gpiod_outputs[gpio] = req
 
+            for rpi_output in self.rpi_outputs:
+                if rpi_output.get('output_type') in ('regular', 'temp_hum_control') and self.to_int(rpi_output.get('gpio_pin')) == gpio:
+                    active_low = is_active_low(rpi_output)
+                    rpi_output['gpio_status'] = (not val_bool) if active_low else val_bool
+            self._settings.set(["rpi_outputs"], self.rpi_outputs)
+            self._settings.save()
+
             if queue_id is not None:
                 self._logger.debug("Running scheduled queue id %s", queue_id)
             self._logger.debug("Writing on GPIO: %s value %s", gpio, val_bool)
@@ -2194,17 +2285,19 @@ class EnclosurePlugin(octoprint.plugin.StartupPlugin, octoprint.plugin.TemplateP
     def write_pwm(self, gpio, pwm_value, queue_id=None):
         try:
             gpio = self.to_int(gpio)
+            pwm_value = self.to_int(pwm_value)
             if queue_id is not None:
                 self._logger.debug("running scheduled queue id %s", queue_id)
             for pwm in self.pwm_instances:
                 if gpio in pwm:
                     pwm_object = pwm[gpio]
-                    old_pwm_value = pwm['duty_cycle'] if 'duty_cycle' in pwm else -1
-                    if not self.to_int(old_pwm_value) == self.to_int(pwm_value):
-                        pwm['duty_cycle'] = pwm_value
-                        pwm_object.start(pwm_value) #should be changed back to pwm_object.ChangeDutyCycle() but this
-                        # was causing errors.
-                        self._logger.debug("Writing PWM on gpio: %s value %s", gpio, pwm_value)
+                    pwm['duty_cycle'] = pwm_value
+                    pwm_object.start(pwm_value)
+                    self._logger.debug("Writing PWM on gpio: %s value %s", gpio, pwm_value)
+                    for rpi_output in self.rpi_outputs:
+                        if rpi_output['output_type'] in ('pwm', 'pwm_pigpio') and self.to_int(rpi_output['gpio_pin']) == gpio:
+                            rpi_output['duty_cycle'] = pwm_value
+                    self._settings.set(["rpi_outputs"], self.rpi_outputs)
                     self.update_ui()
                     if queue_id is not None:
                         self.stop_queue_item(queue_id)
@@ -2382,11 +2475,13 @@ class EnclosurePlugin(octoprint.plugin.StartupPlugin, octoprint.plugin.TemplateP
             if rpi_output['startup_with_server']:
                 gpio = self.to_int(rpi_output['gpio_pin'])
                 if rpi_output['output_type'] == 'regular':
-                    value = False if rpi_output['active_low'] else True
+                    active_low = is_active_low(rpi_output)
+                    value = False if active_low else True
                     if rpi_output['gpio_i2c_enabled']:
                         self.gpio_i2c_write(rpi_output, value)
                     else:
                         self.write_gpio(gpio, value)
+                    rpi_output['gpio_status'] = True
                 if rpi_output['output_type'] == 'ledstrip':
                     self.ledstrip_set_rgb(rpi_output)
                 if rpi_output['output_type'] in ('pwm', 'pwm_pigpio') and not rpi_output['pwm_temperature_linked']:
@@ -2403,6 +2498,9 @@ class EnclosurePlugin(octoprint.plugin.StartupPlugin, octoprint.plugin.TemplateP
                                                green, blue, address, neopixel_direct, index_id)
                 if rpi_output['output_type'] == 'temp_hum_control':
                     rpi_output['temp_ctr_set_value'] = rpi_output['temp_ctr_default_value']
+            else:
+                if rpi_output['output_type'] == 'regular' and not rpi_output.get('gpio_status'):
+                    rpi_output['gpio_status'] = False
 
     def schedule_auto_startup_outputs(self, rpi_output, delay_seconds):
         sufix = 'auto_startup'

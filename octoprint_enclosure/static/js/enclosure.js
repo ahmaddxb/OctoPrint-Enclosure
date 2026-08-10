@@ -178,11 +178,13 @@ $(function () {
       }
 
       if (data.hasOwnProperty("rpi_output_regular")) {
+        console.log("[DEBUG JS] Received rpi_output_regular:", data.rpi_output_regular);
         data.rpi_output_regular.forEach(function (output) {
           var linked_output = ko.utils.arrayFilter(self.rpi_outputs(), function (item) {
-            return (output['index_id'] == item.index_id());
+            return (parseInt(output['index_id']) === parseInt(item.index_id()));
           }).pop();
           if (linked_output) {
+            console.log("[DEBUG JS] Updating output index " + output['index_id'] + " gpio_status to: " + output['status']);
             linked_output.gpio_status(output['status'])
             linked_output.auto_shutdown(output['auto_shutdown'])
             linked_output.auto_startup(output['auto_startup'])
@@ -193,7 +195,7 @@ $(function () {
       if (data.hasOwnProperty("rpi_output_temp_hum_ctrl")) {
         data.rpi_output_temp_hum_ctrl.forEach(function (output) {
           var linked_output = ko.utils.arrayFilter(self.rpi_outputs(), function (item) {
-            return (output['index_id'] == item.index_id());
+            return (parseInt(output['index_id']) === parseInt(item.index_id()));
           }).pop();
           if (linked_output) {
             linked_output.gpio_status(output['status'])
@@ -204,11 +206,13 @@ $(function () {
       }
 
       if (data.hasOwnProperty("rpi_output_pwm")) {
+        console.log("[DEBUG JS] Received rpi_output_pwm:", data.rpi_output_pwm);
         data.rpi_output_pwm.forEach(function (output) {
           var linked_output = ko.utils.arrayFilter(self.rpi_outputs(), function (item) {
-            return (output['index_id'] == item.index_id());
+            return (parseInt(output['index_id']) === parseInt(item.index_id()));
           }).pop();
           if (linked_output) {
+            console.log("[DEBUG JS] Updating output index " + output['index_id'] + " duty_cycle to: " + output['pwm_value']);
             linked_output.duty_cycle(output['pwm_value'])
             linked_output.auto_shutdown(output['auto_shutdown'])
             linked_output.auto_startup(output['auto_startup'])
@@ -519,9 +523,11 @@ $(function () {
     };
 
     self.handleIO = function (item, form) {
+      var target_status = !item.gpio_status();
+      item.gpio_status(target_status);
 
       var request = {
-        "status": !item.gpio_status(),
+        "status": target_status,
         "index_id": item.index_id()
       };
 
@@ -531,7 +537,13 @@ $(function () {
         data: request,
         url: self.buildPluginUrl("/setIO"),
         success: function (data) {
+          if (data && typeof data.status !== "undefined") {
+            item.gpio_status(data.status);
+          }
           self.getUpdateUI();
+        },
+        error: function () {
+          item.gpio_status(!target_status);
         }
       });
     };
