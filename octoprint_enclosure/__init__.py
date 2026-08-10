@@ -2783,7 +2783,7 @@ class EnclosurePlugin(octoprint.plugin.StartupPlugin, octoprint.plugin.ShutdownP
 
 __plugin_name__ = "Enclosure Plugin"
 __plugin_pythoncompat__ = ">=2.7,<4"
-__plugin_version__ = "5.0.9"
+__plugin_version__ = "5.1.0"
 
 
 def __plugin_load__():
