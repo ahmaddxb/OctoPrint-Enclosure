@@ -2326,7 +2326,7 @@ class EnclosurePlugin(octoprint.plugin.StartupPlugin, octoprint.plugin.ShutdownP
     def get_output_list(self):
         result = []
         for rpi_output in self.rpi_outputs:
-            if rpi_output['output_type'] == 'regular':
+            if 'gpio_pin' in rpi_output and rpi_output['gpio_pin'] != "":
                 result.append(self.to_int(rpi_output['gpio_pin']))
         return result
 
