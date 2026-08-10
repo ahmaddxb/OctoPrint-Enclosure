@@ -1956,10 +1956,8 @@ class EnclosurePlugin(octoprint.plugin.StartupPlugin, octoprint.plugin.ShutdownP
                 
                 if pwm_instance:
                     existing_dc = None
-                    for existing_pwm in pwm_instances_to_remove:
-                        if pin in existing_pwm and 'duty_cycle' in existing_pwm:
-                            existing_dc = existing_pwm['duty_cycle']
-                            break
+                    if existing_instance and 'duty_cycle' in existing_instance:
+                        existing_dc = existing_instance['duty_cycle']
                     if existing_dc is None:
                         if gpio_out_pwm.get('startup_with_server'):
                             existing_dc = self.to_int(gpio_out_pwm.get('default_duty_cycle', 0))
